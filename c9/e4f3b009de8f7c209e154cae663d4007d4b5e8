@@ -1,0 +1,732 @@
+.editorconfig
+  h_cc604c9bda8355 1-12
+.gitignore
+  h_cc604c9bda8355 1-44
+.prettierignore
+  h_cc604c9bda8355 1-7
+.prettierrc.json
+  h_cc604c9bda8355 1-12
+AGENTS.md
+  h_cc604c9bda8355 1-266
+README.md
+  h_cc604c9bda8355 1-299
+build/icons/icon-win.svg
+  h_cc604c9bda8355 1-29
+build/icons/icon.svg
+  h_cc604c9bda8355 1-24
+electron/background-tasks/controller.ts
+  h_cc604c9bda8355 1-168
+electron/background-tasks/extension.ts
+  h_cc604c9bda8355 1-224
+electron/background-tasks/persistence.ts
+  h_cc604c9bda8355 1-231
+electron/background-tasks/registry.ts
+  h_cc604c9bda8355 1-603
+electron/background-tasks/types.ts
+  h_cc604c9bda8355 1-84
+electron/browser/controller.ts
+  h_cc604c9bda8355 1-597
+electron/browser/evaluate.ts
+  h_cc604c9bda8355 1-104
+electron/browser/mcp-server.ts
+  h_cc604c9bda8355 1-265
+electron/browser/traffic.ts
+  h_cc604c9bda8355 1-648
+electron/browser/types.ts
+  h_cc604c9bda8355 1-37
+electron/browser/url.ts
+  h_cc604c9bda8355 1-36
+electron/classifier-config.ts
+  h_cc604c9bda8355 1-239
+electron/classifier/registry.ts
+  h_cc604c9bda8355 1-136
+electron/config-dir.ts
+  h_cc604c9bda8355 1-36
+electron/external-app-catalog.ts
+  h_cc604c9bda8355 1-205
+electron/external-apps.ts
+  h_cc604c9bda8355 1-371
+electron/git-ai/config.ts
+  h_cc604c9bda8355 1-88
+electron/git-ai/extension.ts
+  h_cc604c9bda8355 1-337
+electron/git-ai/paths.ts
+  h_cc604c9bda8355 1-108
+electron/git-ai/status.ts
+  h_cc604c9bda8355 1-96
+electron/goal/controller.ts
+  h_cc604c9bda8355 1-304
+electron/goal/extension.ts
+  h_cc604c9bda8355 1-214
+electron/goal/persistence.ts
+  h_cc604c9bda8355 1-201
+electron/goal/prompts.ts
+  h_cc604c9bda8355 1-111
+electron/goal/runtime.ts
+  h_cc604c9bda8355 1-562
+electron/goal/tools.ts
+  h_cc604c9bda8355 1-255
+electron/hooks/config.ts
+  h_cc604c9bda8355 1-185
+electron/hooks/extension.ts
+  h_cc604c9bda8355 1-317
+electron/hooks/runner.ts
+  h_cc604c9bda8355 1-169
+electron/ipc/background-task-ipc.ts
+  h_cc604c9bda8355 1-55
+electron/ipc/browser-ipc.ts
+  h_cc604c9bda8355 1-40
+electron/ipc/classifier-ipc.ts
+  h_cc604c9bda8355 1-434
+electron/ipc/git-ai-ipc.ts
+  h_cc604c9bda8355 1-35
+electron/ipc/git-ipc.ts
+  h_cc604c9bda8355 1-94
+electron/ipc/goal-ipc.ts
+  h_cc604c9bda8355 1-51
+electron/ipc/hook-ipc.ts
+  h_cc604c9bda8355 1-30
+electron/ipc/logs-ipc.ts
+  h_cc604c9bda8355 1-89
+electron/ipc/mcp-ipc.ts
+  h_cc604c9bda8355 1-111
+electron/ipc/memory-ipc.ts
+  h_cc604c9bda8355 1-177
+electron/ipc/misc-ipc.ts
+  h_cc604c9bda8355 1-646
+electron/ipc/model-ipc.ts
+  h_cc604c9bda8355 1-316
+electron/ipc/permission-ipc.ts
+  h_cc604c9bda8355 1-87
+electron/ipc/plan-ipc.ts
+  h_cc604c9bda8355 1-40
+electron/ipc/session-ipc.ts
+  h_cc604c9bda8355 1-486
+electron/ipc/settings-ipc.ts
+  h_cc604c9bda8355 1-114
+electron/ipc/skill-ipc.ts
+  h_cc604c9bda8355 1-498
+electron/ipc/statistics-ipc.ts
+  h_cc604c9bda8355 1-62
+electron/ipc/subagent-ipc.ts
+  h_cc604c9bda8355 1-34
+electron/ipc/terminal-ipc.ts
+  h_cc604c9bda8355 1-213
+electron/ipc/types.ts
+  h_cc604c9bda8355 1-24
+electron/logs/agent-events.ts
+  h_cc604c9bda8355 1-162
+electron/logs/channel-logs.ts
+  h_cc604c9bda8355 1-87
+electron/logs/classifier-log.ts
+  h_cc604c9bda8355 1-24
+electron/logs/logger.ts
+  h_cc604c9bda8355 1-360
+electron/main.ts
+  h_cc604c9bda8355 1-427
+electron/mcp/config.ts
+  h_cc604c9bda8355 1-118
+electron/mcp/manager.ts
+  h_cc604c9bda8355 1-455
+electron/mcp/proxy-tool.ts
+  h_cc604c9bda8355 1-114
+electron/memory/config.ts
+  h_cc604c9bda8355 1-155
+electron/memory/controller.ts
+  h_cc604c9bda8355 1-432
+electron/memory/extension.ts
+  h_cc604c9bda8355 1-72
+electron/memory/persistence.ts
+  h_cc604c9bda8355 1-163
+electron/memory/pipeline.ts
+  h_cc604c9bda8355 1-384
+electron/memory/prompts.ts
+  h_cc604c9bda8355 1-345
+electron/memory/review.ts
+  h_cc604c9bda8355 1-217
+electron/memory/secrets.ts
+  h_cc604c9bda8355 1-30
+electron/memory/session-reader.ts
+  h_cc604c9bda8355 1-208
+electron/memory/state.ts
+  h_cc604c9bda8355 1-52
+electron/memory/store.ts
+  h_cc604c9bda8355 1-344
+electron/memory/tools.ts
+  h_cc604c9bda8355 1-420
+electron/model-presets.ts
+  h_cc604c9bda8355 1-158
+electron/notifications.ts
+  h_cc604c9bda8355 1-97
+electron/permission/classifier-gate.ts
+  h_cc604c9bda8355 1-355
+electron/permission/controller.ts
+  h_cc604c9bda8355 1-454
+electron/permission/policy.ts
+  h_cc604c9bda8355 1-747
+electron/pi-bridge.ts
+  h_cc604c9bda8355 1-619
+electron/plan/controller.ts
+  h_cc604c9bda8355 1-270
+electron/plan/extension.ts
+  h_cc604c9bda8355 1-70
+electron/plan/persistence.ts
+  h_cc604c9bda8355 1-29
+electron/plan/prompts.ts
+  h_cc604c9bda8355 1-61
+electron/plan/tools.ts
+  h_cc604c9bda8355 1-110
+electron/project-path.ts
+  h_cc604c9bda8355 1-97
+electron/provider-config.ts
+  h_cc604c9bda8355 1-289
+electron/queued-messages.ts
+  h_cc604c9bda8355 1-87
+electron/runtime-lifecycle.ts
+  h_cc604c9bda8355 1-25
+electron/sandbox-extension.ts
+  h_cc604c9bda8355 1-63
+electron/session-access.ts
+  h_cc604c9bda8355 1-77
+electron/statistics/scan.ts
+  h_cc604c9bda8355 1-271
+electron/statistics/usage-worker.ts
+  h_cc604c9bda8355 1-13
+electron/subagents/child-extension.ts
+  h_cc604c9bda8355 1-167
+electron/subagents/controller.ts
+  h_cc604c9bda8355 1-524
+electron/subagents/executor.ts
+  h_cc604c9bda8355 1-451
+electron/subagents/extension.ts
+  h_cc604c9bda8355 1-50
+electron/subagents/persistence.ts
+  h_cc604c9bda8355 1-137
+electron/subagents/prompts.ts
+  h_cc604c9bda8355 1-91
+electron/subagents/registry.ts
+  h_cc604c9bda8355 1-238
+electron/subagents/session-file.ts
+  h_cc604c9bda8355 1-232
+electron/subagents/tools.ts
+  h_cc604c9bda8355 1-106
+electron/subagents/transcript.ts
+  h_cc604c9bda8355 1-125
+electron/subagents/types.ts
+  h_cc604c9bda8355 1-162
+electron/tools/ask-tool.ts
+  h_cc604c9bda8355 1-161
+electron/tools/index.ts
+  h_cc604c9bda8355 1-26
+electron/tools/read-img-tool.ts
+  h_cc604c9bda8355 1-297
+electron/tools/todo-tool.ts
+  h_cc604c9bda8355 1-97
+eslint.config.mjs
+  h_cc604c9bda8355 1-137
+index.html
+  h_cc604c9bda8355 1-41
+package-lock.json
+  h_cc604c9bda8355 1-14636
+package.json
+  h_cc604c9bda8355 1-314
+pnpm-lock.yaml
+  h_cc604c9bda8355 1-9111
+postcss.config.js
+  h_cc604c9bda8355 1-6
+preload.ts
+  h_cc604c9bda8355 1-495
+resources/agents/generalist.md
+  h_cc604c9bda8355 1-21
+resources/agents/reviewer.md
+  h_cc604c9bda8355 1-24
+resources/agents/scout.md
+  h_cc604c9bda8355 1-23
+resources/agents/worker.md
+  h_cc604c9bda8355 1-22
+resources/docs/pi-desktop-system-prompt.md
+  h_cc604c9bda8355 1-8
+resources/docs/pi-desktop.md
+  h_cc604c9bda8355 1-118
+resources/skills/skill-creator/SKILL.md
+  h_cc604c9bda8355 1-198
+resources/skills/skill-creator/references/pi-skill-format.md
+  h_cc604c9bda8355 1-94
+resources/skills/skill-creator/references/skill-template.md
+  h_cc604c9bda8355 1-50
+resources/skills/skill-creator/scripts/validate-skill.js
+  h_cc604c9bda8355 1-179
+"resources/terminal-themes/Claude Dark.json"
+  h_cc604c9bda8355 1-25
+"resources/terminal-themes/Claude Light.json"
+  h_cc604c9bda8355 1-25
+"resources/terminal-themes/Dark Modern.json"
+  h_cc604c9bda8355 1-25
+resources/terminal-themes/Dark+.json
+  h_cc604c9bda8355 1-25
+"resources/terminal-themes/GitHub Dark Default.json"
+  h_cc604c9bda8355 1-25
+"resources/terminal-themes/GitHub Light Default.json"
+  h_cc604c9bda8355 1-25
+resources/terminal-themes/Idea.json
+  h_cc604c9bda8355 1-25
+"resources/terminal-themes/Light Owl.json"
+  h_cc604c9bda8355 1-25
+"resources/terminal-themes/Material Darker.json"
+  h_cc604c9bda8355 1-25
+resources/terminal-themes/Material.json
+  h_cc604c9bda8355 1-25
+"resources/terminal-themes/Monokai Pro Light.json"
+  h_cc604c9bda8355 1-25
+"resources/terminal-themes/Monokai Pro Spectrum.json"
+  h_cc604c9bda8355 1-25
+"resources/terminal-themes/Night Owl.json"
+  h_cc604c9bda8355 1-25
+"resources/terminal-themes/Night Owlish Light.json"
+  h_cc604c9bda8355 1-25
+"resources/terminal-themes/One Half Dark.json"
+  h_cc604c9bda8355 1-25
+"resources/terminal-themes/One Half Light.json"
+  h_cc604c9bda8355 1-25
+"resources/terminal-themes/Xcode Dark.json"
+  h_cc604c9bda8355 1-25
+"resources/terminal-themes/Xcode Light.json"
+  h_cc604c9bda8355 1-25
+"resources/terminal-themes/iTerm2 Solarized Dark.json"
+  h_cc604c9bda8355 1-25
+"resources/terminal-themes/iTerm2 Solarized Light.json"
+  h_cc604c9bda8355 1-25
+scripts/fix-pty-perm.js
+  h_cc604c9bda8355 1-90
+scripts/generate-icons.mjs
+  h_cc604c9bda8355 1-144
+scripts/generate-monaco-themes.mjs
+  h_cc604c9bda8355 1-103
+scripts/patch-pi-loader.js
+  h_cc604c9bda8355 1-112
+src/App.tsx
+  h_cc604c9bda8355 1-278
+src/components/Footer.tsx
+  h_cc604c9bda8355 1-97
+src/components/GitBranchButton.tsx
+  h_cc604c9bda8355 1-191
+src/components/SettingsPage.tsx
+  h_cc604c9bda8355 1-133
+src/components/background-tasks/BackgroundTaskPanel.tsx
+  h_cc604c9bda8355 1-503
+src/components/chat/AskUserPanel.tsx
+  h_cc604c9bda8355 1-203
+src/components/chat/BookmarkRail.tsx
+  h_cc604c9bda8355 1-153
+src/components/chat/ChatHeader.tsx
+  h_cc604c9bda8355 1-173
+src/components/chat/ChatInput.tsx
+  h_cc604c9bda8355 1-886
+src/components/chat/ChatStream.tsx
+  h_cc604c9bda8355 1-253
+src/components/chat/CompactionToast.tsx
+  h_cc604c9bda8355 1-51
+src/components/chat/ContextDetailModal.tsx
+  h_cc604c9bda8355 1-336
+src/components/chat/ContextIndicator.tsx
+  h_cc604c9bda8355 1-110
+src/components/chat/ImageLightbox.tsx
+  h_cc604c9bda8355 1-98
+src/components/chat/McpStatusModal.tsx
+  h_cc604c9bda8355 1-139
+src/components/chat/MemoryPanel.tsx
+  h_cc604c9bda8355 1-342
+src/components/chat/MemoryReviewSection.tsx
+  h_cc604c9bda8355 1-302
+src/components/chat/MentionDropdown.tsx
+  h_cc604c9bda8355 1-46
+src/components/chat/MessageActions.tsx
+  h_cc604c9bda8355 1-78
+src/components/chat/ModelSelector.tsx
+  h_cc604c9bda8355 1-108
+src/components/chat/PermissionApprovalPanel.tsx
+  h_cc604c9bda8355 1-211
+src/components/chat/QueueChips.tsx
+  h_cc604c9bda8355 1-321
+src/components/chat/ThinkingBlock.tsx
+  h_cc604c9bda8355 1-52
+src/components/chat/TodoPanel.tsx
+  h_cc604c9bda8355 1-159
+src/components/chat/TodoProgressCapsule.tsx
+  h_cc604c9bda8355 1-47
+src/components/chat/ToolCard.tsx
+  h_cc604c9bda8355 1-82
+src/components/chat/chat-items.ts
+  h_cc604c9bda8355 1-175
+src/components/chat/chat-utils.tsx
+  h_cc604c9bda8355 1-59
+src/components/chat/messages/AssistantMessage.tsx
+  h_cc604c9bda8355 1-135
+src/components/chat/messages/UserMessageContent.tsx
+  h_cc604c9bda8355 1-81
+src/components/chat/tool-calls/CollapsedToolGroup.tsx
+  h_cc604c9bda8355 1-102
+src/components/chat/tool-calls/ToolCallParts.tsx
+  h_cc604c9bda8355 1-125
+src/components/chat/tool-calls/tool-presentation.ts
+  h_cc604c9bda8355 1-52
+src/components/code/Breadcrumb.tsx
+  h_cc604c9bda8355 1-235
+src/components/code/CodePanel.tsx
+  h_cc604c9bda8355 1-332
+src/components/code/DiffViewer.tsx
+  h_cc604c9bda8355 1-93
+src/components/code/ExternalAppIcon.tsx
+  h_cc604c9bda8355 1-25
+src/components/code/FileTree.tsx
+  h_cc604c9bda8355 1-192
+src/components/code/breadcrumb-path.ts
+  h_cc604c9bda8355 1-127
+src/components/common/Checkbox.tsx
+  h_cc604c9bda8355 1-62
+src/components/common/ConfirmDialog.tsx
+  h_cc604c9bda8355 1-77
+src/components/common/ContextMenu.tsx
+  h_cc604c9bda8355 1-82
+src/components/common/DateTimePicker.css
+  h_cc604c9bda8355 1-20
+src/components/common/DateTimePicker.tsx
+  h_cc604c9bda8355 1-358
+src/components/common/Dropdown.tsx
+  h_cc604c9bda8355 1-436
+src/components/common/Icon.tsx
+  h_cc604c9bda8355 1-13
+src/components/common/JsonEditor.tsx
+  h_cc604c9bda8355 1-67
+src/components/common/Markdown.tsx
+  h_cc604c9bda8355 1-133
+src/components/common/McpIcon.tsx
+  h_cc604c9bda8355 1-38
+src/components/common/PanelIcon.tsx
+  h_cc604c9bda8355 1-58
+src/components/common/PasswordInput.tsx
+  h_cc604c9bda8355 1-36
+src/components/common/PromptModal.tsx
+  h_cc604c9bda8355 1-92
+src/components/common/Radio.tsx
+  h_cc604c9bda8355 1-53
+src/components/common/ResizeHandle.tsx
+  h_cc604c9bda8355 1-77
+src/components/common/StopRunningConfirm.tsx
+  h_cc604c9bda8355 1-28
+src/components/common/Switch.tsx
+  h_cc604c9bda8355 1-40
+src/components/common/TitleMenuBar.tsx
+  h_cc604c9bda8355 1-128
+src/components/common/ToastHost.tsx
+  h_cc604c9bda8355 1-50
+src/components/common/dropdown-geometry.ts
+  h_cc604c9bda8355 1-119
+src/components/common/icons.ts
+  h_cc604c9bda8355 1-191
+src/components/goal/GoalBar.tsx
+  h_cc604c9bda8355 1-135
+src/components/goal/GoalEditDialog.tsx
+  h_cc604c9bda8355 1-100
+src/components/plan/PlanReviewPanel.tsx
+  h_cc604c9bda8355 1-445
+src/components/plan/annotation.ts
+  h_cc604c9bda8355 1-39
+src/components/session/ProjectInfoModal.tsx
+  h_cc604c9bda8355 1-104
+src/components/session/SessionInfoModal.tsx
+  h_cc604c9bda8355 1-522
+src/components/session/SessionSearchModal.tsx
+  h_cc604c9bda8355 1-296
+src/components/session/SessionSidebar.tsx
+  h_cc604c9bda8355 1-543
+src/components/session/TreeView.tsx
+  h_cc604c9bda8355 1-358
+src/components/settings/AgentTab.tsx
+  h_cc604c9bda8355 1-804
+src/components/settings/AppearanceTab.tsx
+  h_cc604c9bda8355 1-469
+src/components/settings/BrowserTab.tsx
+  h_cc604c9bda8355 1-86
+src/components/settings/BuiltinProviders.tsx
+  h_cc604c9bda8355 1-270
+src/components/settings/ClassifierProviderModal.tsx
+  h_cc604c9bda8355 1-422
+src/components/settings/ClassifierTab.tsx
+  h_cc604c9bda8355 1-644
+src/components/settings/EditorSettings.tsx
+  h_cc604c9bda8355 1-372
+src/components/settings/GitAiSection.tsx
+  h_cc604c9bda8355 1-203
+src/components/settings/HooksTab.tsx
+  h_cc604c9bda8355 1-494
+src/components/settings/LogsTab.tsx
+  h_cc604c9bda8355 1-393
+src/components/settings/McpTab.tsx
+  h_cc604c9bda8355 1-570
+src/components/settings/MemoryTab.tsx
+  h_cc604c9bda8355 1-427
+src/components/settings/ModelsTab.tsx
+  h_cc604c9bda8355 1-180
+src/components/settings/ProviderModal.tsx
+  h_cc604c9bda8355 1-1061
+src/components/settings/SkillsTab.tsx
+  h_cc604c9bda8355 1-378
+src/components/settings/StatisticsTab.tsx
+  h_cc604c9bda8355 1-417
+src/components/settings/UsageCharts.tsx
+  h_cc604c9bda8355 1-367
+src/components/subagents/SubagentPanel.tsx
+  h_cc604c9bda8355 1-228
+src/components/subagents/SubagentRunDetailModal.tsx
+  h_cc604c9bda8355 1-384
+src/components/terminal/TerminalPanel.tsx
+  h_cc604c9bda8355 1-415
+src/components/workspace/BrowserContent.tsx
+  h_cc604c9bda8355 1-166
+src/components/workspace/RightWorkspace.tsx
+  h_cc604c9bda8355 1-494
+src/components/workspace/WorkspacePanel.tsx
+  h_cc604c9bda8355 1-38
+src/hooks/loadSession.ts
+  h_cc604c9bda8355 1-136
+src/hooks/useEventBindings.ts
+  h_cc604c9bda8355 1-103
+src/hooks/useMention.ts
+  h_cc604c9bda8355 1-186
+src/hooks/useMonaco.ts
+  h_cc604c9bda8355 1-76
+src/hooks/useMonacoEditor.ts
+  h_cc604c9bda8355 1-89
+src/hooks/usePiEvent.ts
+  h_cc604c9bda8355 1-282
+src/hooks/useSessionInit.ts
+  h_cc604c9bda8355 1-17
+src/i18n/zh.ts
+  h_cc604c9bda8355 1-1432
+src/index.css
+  h_cc604c9bda8355 1-404
+src/lib/model-presets.ts
+  h_cc604c9bda8355 1-161
+src/lib/monaco-options.ts
+  h_cc604c9bda8355 1-71
+src/lib/monaco-themes.generated.ts
+  h_cc604c9bda8355 1-135
+src/lib/monaco-themes.ts
+  h_cc604c9bda8355 1-100
+src/lib/stopRunningConfirm.ts
+  h_cc604c9bda8355 1-105
+src/main.tsx
+  h_cc604c9bda8355 1-11
+src/store/pi-store.ts
+  h_cc604c9bda8355 1-1167
+src/theme/applyTheme.ts
+  h_cc604c9bda8355 1-131
+src/theme/terminalThemes.ts
+  h_cc604c9bda8355 1-109
+src/theme/themes.ts
+  h_cc604c9bda8355 1-808
+src/types/model-preset.ts
+  h_cc604c9bda8355 1-47
+src/types/pi.d.ts
+  h_cc604c9bda8355 1-1463
+src/types/session.ts
+  h_cc604c9bda8355 1-22
+src/types/shared.ts
+  h_cc604c9bda8355 1-146
+src/types/usage-statistics.ts
+  h_cc604c9bda8355 1-48
+src/utils/clipboard.ts
+  h_cc604c9bda8355 1-13
+src/utils/format.ts
+  h_cc604c9bda8355 1-10
+src/utils/session-messages.ts
+  h_cc604c9bda8355 1-30
+src/utils/session-search.ts
+  h_cc604c9bda8355 1-95
+src/utils/text.ts
+  h_cc604c9bda8355 1-31
+src/utils/time.ts
+  h_cc604c9bda8355 1-11
+src/utils/todo-progress.ts
+  h_cc604c9bda8355 1-31
+src/utils/token-rate.ts
+  h_cc604c9bda8355 1-131
+src/utils/usage-statistics.ts
+  h_cc604c9bda8355 1-90
+tailwind.config.ts
+  h_cc604c9bda8355 1-41
+tests/background-tasks/persistence.test.ts
+  h_cc604c9bda8355 1-78
+tests/background-tasks/registry.test.ts
+  h_cc604c9bda8355 1-227
+tests/browser/controller.test.ts
+  h_cc604c9bda8355 1-195
+tests/browser/evaluate.test.ts
+  h_cc604c9bda8355 1-91
+tests/browser/mcp-server.test.ts
+  h_cc604c9bda8355 1-152
+tests/browser/traffic.test.ts
+  h_cc604c9bda8355 1-398
+tests/browser/ui-settings.test.ts
+  h_cc604c9bda8355 1-116
+tests/browser/url.test.ts
+  h_cc604c9bda8355 1-31
+tests/chat/bookmark-turns.test.ts
+  h_cc604c9bda8355 1-85
+tests/chat/pending-send-mode.test.ts
+  h_cc604c9bda8355 1-44
+tests/chat/queue-ipc.test.ts
+  h_cc604c9bda8355 1-140
+tests/chat/queued-messages.test.ts
+  h_cc604c9bda8355 1-145
+tests/chat/tool-groups.test.ts
+  h_cc604c9bda8355 1-198
+tests/classifier/classifier-config.test.ts
+  h_cc604c9bda8355 1-281
+tests/classifier/ipc.test.ts
+  h_cc604c9bda8355 1-799
+tests/classifier/live.test.ts
+  h_cc604c9bda8355 1-208
+tests/classifier/registry.test.ts
+  h_cc604c9bda8355 1-223
+tests/components/breadcrumb-path.test.ts
+  h_cc604c9bda8355 1-108
+tests/components/dropdown-geometry.test.ts
+  h_cc604c9bda8355 1-151
+tests/external-apps.test.ts
+  h_cc604c9bda8355 1-343
+tests/git-ai/config.test.ts
+  h_cc604c9bda8355 1-98
+tests/git-ai/extension-checkpoint.test.ts
+  h_cc604c9bda8355 1-227
+tests/git-ai/extension.test.ts
+  h_cc604c9bda8355 1-147
+tests/git-ai/status.test.ts
+  h_cc604c9bda8355 1-77
+tests/goal/persistence.test.ts
+  h_cc604c9bda8355 1-287
+tests/goal/runtime-advanced.test.ts
+  h_cc604c9bda8355 1-396
+tests/goal/runtime-basic.test.ts
+  h_cc604c9bda8355 1-257
+tests/hooks/messageKey.test.ts
+  h_cc604c9bda8355 1-58
+tests/lib/model-presets.test.ts
+  h_cc604c9bda8355 1-226
+tests/lib/monaco-extended-themes.test.ts
+  h_cc604c9bda8355 1-103
+tests/lib/monaco-options.test.ts
+  h_cc604c9bda8355 1-117
+tests/lib/stopRunningConfirm.test.ts
+  h_cc604c9bda8355 1-136
+tests/logs/agent-events.test.ts
+  h_cc604c9bda8355 1-208
+tests/logs/channel-logs.test.ts
+  h_cc604c9bda8355 1-176
+tests/logs/logger-config.test.ts
+  h_cc604c9bda8355 1-251
+tests/logs/logger.test.ts
+  h_cc604c9bda8355 1-244
+tests/logs/logs-ipc.test.ts
+  h_cc604c9bda8355 1-197
+tests/mcp/config.test.ts
+  h_cc604c9bda8355 1-206
+tests/memory/controller-injection.test.ts
+  h_cc604c9bda8355 1-222
+tests/memory/e2e/pipeline-e2e.test.ts
+  h_cc604c9bda8355 1-169
+tests/memory/injection.test.ts
+  h_cc604c9bda8355 1-85
+tests/memory/pipeline.test.ts
+  h_cc604c9bda8355 1-315
+tests/memory/reliability.test.ts
+  h_cc604c9bda8355 1-553
+tests/memory/session-reader.test.ts
+  h_cc604c9bda8355 1-160
+tests/memory/store.test.ts
+  h_cc604c9bda8355 1-240
+tests/memory/tools.test.ts
+  h_cc604c9bda8355 1-104
+tests/model/builtin-providers.test.ts
+  h_cc604c9bda8355 1-184
+tests/model/model-presets.test.ts
+  h_cc604c9bda8355 1-288
+tests/notifications.test.ts
+  h_cc604c9bda8355 1-42
+tests/permission/classifier-approval.test.ts
+  h_cc604c9bda8355 1-887
+tests/permission/controller.test.ts
+  h_cc604c9bda8355 1-300
+tests/permission/policy.test.ts
+  h_cc604c9bda8355 1-477
+tests/plan/persistence.test.ts
+  h_cc604c9bda8355 1-90
+tests/prompt/desktop-prompt.test.ts
+  h_cc604c9bda8355 1-75
+tests/provider-config.test.ts
+  h_cc604c9bda8355 1-431
+tests/session/load-session.test.ts
+  h_cc604c9bda8355 1-252
+tests/session/pi-bridge.test.ts
+  h_cc604c9bda8355 1-281
+tests/session/project-path.test.ts
+  h_cc604c9bda8355 1-155
+tests/session/runtime-lifecycle.test.ts
+  h_cc604c9bda8355 1-49
+tests/session/session-access.test.ts
+  h_cc604c9bda8355 1-96
+tests/session/session-search.test.ts
+  h_cc604c9bda8355 1-116
+tests/statistics/ipc.test.ts
+  h_cc604c9bda8355 1-93
+tests/statistics/scan.test.ts
+  h_cc604c9bda8355 1-341
+tests/subagents/child-session-tools.test.ts
+  h_cc604c9bda8355 1-100
+tests/subagents/controller.test.ts
+  h_cc604c9bda8355 1-256
+tests/subagents/persistence.test.ts
+  h_cc604c9bda8355 1-157
+tests/subagents/registry.test.ts
+  h_cc604c9bda8355 1-157
+tests/subagents/session-file.test.ts
+  h_cc604c9bda8355 1-270
+tests/subagents/smoke.test.ts
+  h_cc604c9bda8355 1-71
+tests/subagents/toollog.test.ts
+  h_cc604c9bda8355 1-261
+tests/subagents/transcript.test.ts
+  h_cc604c9bda8355 1-183
+tests/utils/format.test.ts
+  h_cc604c9bda8355 1-40
+tests/utils/text.test.ts
+  h_cc604c9bda8355 1-86
+tests/utils/thinking-levels.test.ts
+  h_cc604c9bda8355 1-62
+tests/utils/time.test.ts
+  h_cc604c9bda8355 1-43
+tests/utils/todo-progress.test.ts
+  h_cc604c9bda8355 1-61
+tests/utils/token-rate.test.ts
+  h_cc604c9bda8355 1-182
+tsconfig.json
+  h_cc604c9bda8355 1-28
+tsconfig.node.json
+  h_cc604c9bda8355 1-17
+vite.config.ts
+  h_cc604c9bda8355 1-68
+vitest.config.ts
+  h_cc604c9bda8355 1-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c9e4f3b009de8f7c209e154cae663d4007d4b5e8",
+  "prompts": {},
+  "humans": {
+    "h_cc604c9bda8355": {
+      "author": "lollipopnougat <ab2defg145@gmail.com>"
+    }
+  }
+}
