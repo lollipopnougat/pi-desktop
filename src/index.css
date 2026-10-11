@@ -1,0 +1,404 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ========================================================================
+ * 主题变量。tailwind.config.ts 中的 od-* 颜色经这些变量取色。
+ *
+ * 变量值由 applyTheme.ts 在主题切换时以 inline style 写到 <html>
+ * （名为 --od-<key>，key 来自 themes.ts 的 THEME_FAMILIES 变体表）。
+ * 这里不写默认色板；index.html 内联脚本会在首帧从 localStorage 恢复，
+ * 缺失时回落到第一个主题（见 themes.ts）。
+ *
+ * 注意：变量必须是 "R G B" 三个分量（空格分隔），供
+ * rgb(var(--od-x) / <alpha-value>) 使用，必须是这种纯分量形式，
+ * 否则 tailwind 的透明度修饰语法（bg-od-accent/20）无法生效。
+ * ===================================================================== */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 13px;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  /* UI 字体：由设置页（pi.uiFontFamily）经 --ui-font 变量覆盖，留默认值作回退（等宽优先，中文回退苹方/微软雅黑等） */
+  font-family: var(
+    --ui-font,
+    'SF Mono',
+    'Fira Code',
+    'JetBrains Mono',
+    'Menlo',
+    'PingFang SC',
+    'Microsoft YaHei',
+    '微软雅黑',
+    'Noto Sans CJK SC',
+    monospace
+  );
+
+  /* background: rgb(var(--od-bg)); */
+  background: transparent;
+  color: rgb(var(--od-text));
+}
+
+/* 毛玻璃：body 必须保持透明，否则不透明底色会盖住原生 vibrancy 层。
+   窗口底色改由 App 根容器负责（标题栏不铺底色，露出玻璃） */
+body {
+  background: transparent;
+}
+
+body,
+#root {
+  font-size: 1rem;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: rgb(var(--od-bg-alt));
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--od-border));
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--od-border-light));
+}
+
+/* Selection */
+::selection {
+  background: rgb(var(--od-sel-bg));
+  color: rgb(var(--od-sel-text));
+}
+
+/* 聊天输入框：滚动条轨道顶部内缩，避免滑块探出圆角容器的高亮边框 */
+.chat-textarea::-webkit-scrollbar-track {
+  background: transparent;
+  margin-top: 14px;
+  margin-bottom: 2px;
+}
+
+/* ===== 输入框 focus 样式统一 =====
+ * 移除浏览器默认 outline，用主题蓝色边框高亮。
+ */
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: rgb(var(--od-accent));
+  box-shadow: 0 0 0 1px rgb(var(--od-accent));
+}
+
+/* placeholder：浏览器默认色太淡（UA 在浅背景上几乎看不见），用主题 text-dim */
+input::placeholder,
+textarea::placeholder {
+  color: rgb(var(--od-text-dim));
+  opacity: 1; /* Firefox 默认 placeholder 带 0.54 透明度，去掉 */
+}
+
+/* ===== Markdown body ===== */
+.md-body {
+  font-size: 1rem;
+  line-height: 1.6;
+  word-wrap: break-word;
+}
+.md-body p {
+  margin: 0.5em 0;
+}
+/* 覆盖 @tailwindcss/typography 的 prose-invert：strong/em 走主题色 */
+.md-body strong,
+.md-body b {
+  color: rgb(var(--od-text-bright));
+  font-weight: 600;
+}
+.md-body em,
+.md-body i {
+  color: inherit;
+}
+.md-body h1,
+.md-body h2,
+.md-body h3,
+.md-body h4 {
+  font-weight: 600;
+  margin: 1em 0 0.5em;
+  color: rgb(var(--od-text-bright));
+  line-height: 1.3;
+}
+.md-body h1 {
+  font-size: 1.4em;
+}
+.md-body h2 {
+  font-size: 1.25em;
+}
+.md-body h3 {
+  font-size: 1.1em;
+}
+.md-body ul,
+.md-body ol {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+.md-body ul {
+  list-style: disc;
+}
+.md-body ol {
+  list-style: decimal;
+}
+.md-body li {
+  margin: 0.2em 0;
+}
+.md-body a {
+  color: rgb(var(--od-accent));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.md-body a:hover {
+  color: rgb(var(--od-accent-hover));
+}
+.md-body blockquote {
+  border-left: 3px solid rgb(var(--od-border-light));
+  padding-left: 0.75em;
+  margin: 0.5em 0;
+  color: rgb(var(--od-text));
+  font-style: italic;
+}
+.md-body hr {
+  border: none;
+  border-top: 1px solid rgb(var(--od-border));
+  margin: 1em 0;
+}
+.md-body table {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  font-size: 0.923rem;
+  display: block;
+  overflow-x: auto;
+}
+.md-body th,
+.md-body td {
+  border: 1px solid rgb(var(--od-border));
+  padding: 4px 8px;
+  text-align: left;
+}
+.md-body th {
+  background: rgb(var(--od-bg-hover));
+  font-weight: 600;
+  color: rgb(var(--od-text-bright));
+}
+.md-body :not(pre) > code {
+  background: rgb(var(--od-bg-hover));
+  color: rgb(var(--od-md-code));
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  font-size: 0.9em;
+}
+/* 关闭 @tailwindcss/typography 给行内 code 加的反引号伪元素 */
+.md-body :not(pre) > code::before,
+.md-body :not(pre) > code::after {
+  content: none !important;
+}
+
+/* ===== highlight.js 语法高亮 =====
+ * 不再使用 per-theme 样式表；统一用 CSS 变量 syn-* 取色，主题切换即时生效。
+ * 变量名对应 themes.ts 里的 syn-keyword/string/comment/number/title/attr/type/bg，
+ * 新增主题只需在变量表里提供这些键。
+ */
+.hljs {
+  color: rgb(var(--od-text));
+  background: rgb(var(--od-syn-bg, var(--od-bg-dark)));
+}
+.hljs-comment,
+.hljs-quote {
+  color: rgb(var(--od-syn-comment));
+  font-style: italic;
+}
+.hljs-doctag,
+.hljs-keyword,
+.hljs-formula,
+.hljs-selector-tag,
+.hljs-selector-pseudo,
+.hljs-template-tag {
+  color: rgb(var(--od-syn-keyword));
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-addition,
+.hljs-meta .hljs-string {
+  color: rgb(var(--od-syn-string));
+}
+.hljs-number,
+.hljs-literal,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-link {
+  color: rgb(var(--od-syn-number));
+}
+.hljs-title,
+.hljs-title.function_,
+.hljs-title.class_,
+.hljs-title.class_ .hljs-title,
+.hljs-section {
+  color: rgb(var(--od-syn-title));
+}
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-selector-attr,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-name {
+  color: rgb(var(--od-syn-attr));
+}
+.hljs-type,
+.hljs-built_in,
+.hljs-builtin-name {
+  color: rgb(var(--od-syn-type));
+}
+.hljs-deletion {
+  color: rgb(var(--od-red));
+}
+.hljs-emphasis {
+  font-style: italic;
+}
+.hljs-strong {
+  font-weight: 700;
+}
+.md-body pre.md-code-block {
+  position: relative;
+  background: rgb(var(--od-bg-dark)) !important;
+  border: 1px solid rgb(var(--od-border));
+  border-radius: 6px;
+  padding: 0.75em 1em;
+  margin: 0.6em 0;
+  overflow-x: auto;
+  font-size: 0.923rem;
+  line-height: 1.5;
+}
+/* 代码块复制按钮（半透明软底；--od-overlay-soft dark 为白、light 为黑） */
+.md-copy-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  width: 1.75em;
+  height: 1.75em;
+  border: none;
+  border-radius: 4px;
+  background: rgb(var(--od-overlay-soft) / 0.06);
+  color: rgb(var(--od-text-dim));
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.15s ease,
+    color 0.15s ease,
+    background 0.15s ease;
+}
+.md-body pre.md-code-block:hover .md-copy-btn {
+  opacity: 1;
+}
+.md-copy-btn:hover {
+  background: rgb(var(--od-overlay-soft) / 0.12);
+  color: rgb(var(--od-text));
+}
+.md-copy-btn.copied {
+  color: rgb(var(--od-green));
+  opacity: 1;
+}
+.md-btn-icon {
+  margin-top: 0.2em;
+  margin-left: 0.12em;
+}
+.md-body pre.md-code-block code {
+  font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  background: transparent;
+  padding: 0;
+}
+.md-body pre.md-code-block::before {
+  content: attr(data-lang);
+  display: block;
+  font-size: 0.769rem;
+  color: rgb(var(--od-text-dim));
+  text-transform: uppercase;
+  margin-bottom: 0.4em;
+  letter-spacing: 0.5px;
+}
+
+/* ===== Windows 亚克力毛玻璃：主题色半透明背景 =====
+ * 仅作用于 win32（html[data-platform] 由 index.html 启动脚本写入）：
+ * - 深色模式铺主题深色半透明底，保留一定透明度露出亚克力模糊层；
+ * - 浅色模式铺主题浅色半透明底（透明度略高，避免玻璃过白刺眼）；
+ * - macOS 不命中本规则，vibrancy 原生呈现，表现不变。
+ * 透明区域（标题栏/侧栏/底部状态栏/全屏面板顶部）露出本底色，
+ * 内容区自铺不透明 bg-od-bg，不受影响。
+ * 主题/明暗切换时 <html> 的 --od-* 变量与 data-theme 由 applyTheme 热更新。 */
+html[data-platform='win32'][data-theme$=':dark'] body {
+  background: rgb(var(--od-bg) / 0.6);
+}
+html[data-platform='win32'][data-theme$=':light'] body {
+  background: rgb(var(--od-bg) / 0.5);
+}
+
+/* ===== 玻璃标题栏按钮（毛玻璃上的交互态用半透明 tint，不用纯色底） ===== */
+/* 深色玻璃上白色 tint / 浅色玻璃上黑色 tint，由 <html> color-scheme 自动切换 */
+.titlebar-btn {
+  color: rgb(var(--od-text-dim));
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.titlebar-btn:hover {
+  background: color-mix(in srgb, rgb(var(--od-text)) 10%, transparent);
+  color: rgb(var(--od-text-bright));
+}
+.titlebar-btn:active {
+  background: color-mix(in srgb, rgb(var(--od-text)) 16%, transparent);
+}
+/* 激活态（面板开启）：主题色 tint + 亮文字，玻璃质感 */
+.titlebar-btn.titlebar-btn-active {
+  background: color-mix(in srgb, rgb(var(--od-accent)) 22%, transparent);
+  color: rgb(var(--od-text-bright));
+}
+.titlebar-btn.titlebar-btn-active:hover {
+  background: color-mix(in srgb, rgb(var(--od-accent)) 30%, transparent);
+}
+
+/* ===== 侧栏毛玻璃动画 ===== */
+/* 展开/收起用 width 过渡；拖拽调宽时由组件移除本类（dragging 态），避免不跟手 */
+.sidebar-anim {
+  transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 右侧工作区展开、收起及最大化；拖拽调宽时移除此类。 */
+.workspace-panel-anim {
+  transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 原生日期选择器随主题切换，保证日历按钮在深色背景下可见。 */
+[data-statistics-tab] input[type='date'] {
+  color-scheme: dark;
+}
+
+html[data-theme$=':light'] [data-statistics-tab] input[type='date'] {
+  color-scheme: light;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-panel-anim {
+    transition: none;
+  }
+}

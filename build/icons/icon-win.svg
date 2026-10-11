@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800">
+  <!-- Windows 专用变体：无 padding 满幅绘制（Windows 直接显示原始内容，
+       macOS Big Sur 式的 78px 留白会让图标看起来小一圈）。
+       内容与 icon.svg 完全相同，仅去掉了 78px 内缩与 0.805 缩放，
+       圆角半径按比例放大（144/644×800 ≈ 180）。macOS 的 icns 仍用 icon.svg。 -->
+  <rect width="800" height="800" rx="180" fill="#09090b"/>
+  <path
+    fill="#fff"
+    fill-rule="evenodd"
+    d="
+      M165.29 165.29
+      H517.36
+      V400
+      H400
+      V517.36
+      H282.65
+      V634.72
+      H165.29
+      Z
+      M282.65 282.65
+      V400
+      H400
+      V282.65
+      Z
+    "
+  />
+  <path fill="#fff" d="M517.36 400 H634.72 V634.72 H517.36 Z" />
+</svg>

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="atom-one:dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pi Desktop</title>
+    <script>
+      // 防闪烁：渲染前先把上一次的主题变量恢复到 <html>，避免首帧以错主题渲染。
+      // 缓存由 applyTheme.ts 写入 localStorage['pi-theme-vars']；首次启动（无缓存）
+      // 时留空，由 applyTheme 在 loadUiSettings 后立即写入。
+      // 语法高亮不再依赖样式表，只依赖 --od-syn-* CSS 变量（见 index.css）。
+      (function () {
+        try {
+          var vars = JSON.parse(window.localStorage.getItem('pi-theme-vars') || 'null');
+          var fam = window.localStorage.getItem('pi-theme') || 'atom-one';
+          var mode = window.localStorage.getItem('pi-theme-mode') || 'system';
+          var resolved = mode;
+          if (mode === 'system') {
+            resolved = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          }
+          if (vars && typeof vars === 'object') {
+            document.documentElement.dataset.theme = fam + ':' + resolved;
+            document.documentElement.style.colorScheme = resolved;
+            for (var k in vars) document.documentElement.style.setProperty('--od-' + k, vars[k]);
+            // 冷启动即同步窗口材质明暗（vibrancy 材质随 <html> color-scheme）
+            try { window.pi && window.pi.setThemeAppearance && window.pi.setThemeAppearance(resolved); } catch (e2) {}
+          }
+          // 标记平台供 CSS 使用（Windows 亚克力毛玻璃需按平台加主题色半透明底，macOS 不参与）
+          try {
+            var pf = window.pi && window.pi.platform;
+            if (pf) document.documentElement.dataset.platform = pf;
+          } catch (e3) {}
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

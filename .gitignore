@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-electron/
+
+# tsc 误跑（如 --noEmit false）在源码目录下产生的编译产物
+electron/**/*.js
+preload.js
+
+# Vite cache
+*.tsbuildinfo
+vite.config.d.ts
+vite.config.js
+
+# Electron builder
+release/
+out/
+
+# Logs
+*.log
+/tmp/
+
+# Agent task output
+.pi/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# 测试覆盖率报告（npm run test:coverage 生成）
+coverage/
