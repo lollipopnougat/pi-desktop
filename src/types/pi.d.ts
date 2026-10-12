@@ -129,6 +129,34 @@ interface SubagentSnapshot {
   }>;
 }
 
+// ===================== 会话槽（多会话后台运行） =====================
+
+/** 一个「活着的会话」在主进程侧的状态投影（window.pi.getSessionSlots / onSessionSlots） */
+export interface SessionSlotSnapshot {
+  /** 槽键：按会话操作（如 abort）时传它 */
+  key: string;
+  sessionId: string | null;
+  sessionFile: string | null;
+  cwd: string;
+  /** 是否有工作在飞（在途回合或排队消息待跑） */
+  running: boolean;
+  /** 后台期间跑完了一轮 → 未读点 */
+  unread: boolean;
+  /** 挂起的权限审批数 */
+  pendingApprovals: number;
+  /** 挂起的 ask 提问数（与 pendingApprovals 一起显示「等待审批」） */
+  pendingAsks: number;
+  /** 因并发上限（同时 3 个会话）排队中的用户回合数 */
+  queuedPrompts: number;
+  createdAt: number;
+  lastActivityAt: number;
+}
+
+export interface SessionSlotsPayload {
+  focusedKey: string;
+  slots: SessionSlotSnapshot[];
+}
+
 // ===================== 后台任务 =====================
 
 export type BackgroundTaskStatus = 'running' | 'completed' | 'failed' | 'killed' | 'interrupted';
@@ -787,6 +815,8 @@ interface UiSettings {
   showThinkingBlocks?: boolean;
   /** 连续工具调用默认折叠为摘要（默认 true） */
   collapseToolCalls?: boolean;
+  /** 同项目已有其他会话在跑时，输入框是否弹提醒蒙层（默认 true） */
+  sameProjectBusyWarn?: boolean;
   /** 模型回复期间发送消息的默认方式（'steer' = 引导消息 / 'followUp' = 排队消息，默认 steer） */
   streamingSendMode?: 'steer' | 'followUp';
   /** 权限沙箱策略（主进程 PermissionController 同步读同一字段） */
@@ -1006,10 +1036,11 @@ interface AskAnswer {
 
 export interface PiAPI {
   // === Prompting ===
-  prompt(text: string, opts?: PromptOptions): Promise<void>;
+  /** 返回 queued=true 表示已达并发上限、该回合在排队等待空位 */
+  prompt(text: string, opts?: any): Promise<{ queued: boolean }>;
   steer(text: string): Promise<void>;
   followUp(text: string): Promise<void>;
-  abort(): Promise<void>;
+  abort(sessionKey?: string | null): Promise<void>;
   clearQueue(): Promise<{ steering: string[]; followUp: string[] }>;
   /** 撤回单条排队消息到聊天框（clearQueue + 其余重新入队），返回被撤回文本 */
   revokeQueuedMessage(
@@ -1045,6 +1076,10 @@ export interface PiAPI {
   deleteSession(sessionPath: string): Promise<OperationResult>;
   removeProject(cwd: string): Promise<OperationResult>;
   listSessions(): Promise<SessionListResult>;
+  /** 所有会话槽的状态投影（侧栏徽标：在跑/未读/等待审批） */
+  getSessionSlots(): Promise<SessionSlotsPayload>;
+  /** 槽状态变化推送（主进程节流 ~120ms） */
+  onSessionSlots(cb: (payload: SessionSlotsPayload) => void): () => void;
   getTree(): Promise<SessionTreeResult | null>;
   getSessionEntry(entryId: string): Promise<any>;
   navigateTree(id: string, summarize?: boolean): Promise<void>;
@@ -1181,7 +1216,12 @@ export interface PiAPI {
   selectFile(opts?: { title?: string; filters?: FileFilter[] }): Promise<string | null>;
   saveDialog(opts: SaveDialogOptions): Promise<string | null>;
   setPlanMode(enabled: boolean): Promise<{ ok: boolean }>;
-  askUserResponse(answers: AskAnswer[] | null): Promise<{ ok: boolean }>;
+  askUserResponse(sessionId: string, answers: AskAnswer[] | null): Promise<{ ok: boolean }>;
+  /** 焦点会话挂起的交互（提问/审批）：切换/刷新会话状态后拉取，补上被事件过滤丢掉的面板 */
+  getPendingInteractions(): Promise<{
+    ask: { sessionId: string; questions: AskQuestion[] } | null;
+    permission: PermissionRequest | null;
+  }>;
   onAskUser(cb: (questions: AskQuestion[], identity: SessionIdentity) => void): () => void;
 
   // === 权限沙箱 ===
@@ -1293,7 +1333,7 @@ export interface PiAPI {
 
   // === Goal Mode ===
   goal: {
-    create(text: string, tokenBudget?: number): Promise<{ ok: boolean }>;
+    create(text: string, tokenBudget?: number): Promise<{ ok: boolean; queued?: boolean }>;
     pause(): Promise<{ ok: boolean }>;
     resume(): Promise<{ ok: boolean }>;
     clear(): Promise<{ ok: boolean }>;
@@ -1438,6 +1478,10 @@ export interface PiAPI {
     channel: string,
     maxLines?: number
   ): Promise<{ ok: boolean; lines?: string[]; error?: string }>;
+  /** 用系统默认程序打开单个日志文件（只接受日志目录内的 `.log` / `.log.N` 名字） */
+  openLogFile(name: string): Promise<{ ok: boolean; error?: string }>;
+  /** 删除单个日志文件 */
+  deleteLogFile(name: string): Promise<{ ok: boolean; error?: string }>;
   /** 删除所有日志文件 */
   clearLogs(): Promise<{ ok: boolean; removed?: number; error?: string }>;
 

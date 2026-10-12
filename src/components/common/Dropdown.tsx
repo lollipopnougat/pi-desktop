@@ -70,6 +70,8 @@ export interface DropdownProps {
    * 并在列表底部提示剩余条数；过滤/搜索仍在全量选项上进行，不会被截断。
    */
   maxVisibleOptions?: number;
+  /** 选中后是否关闭面板（默认关闭；模型菜单需要在选模型/推理强度后保持打开，点外部才关） */
+  closeOnSelect?: boolean;
   disabled?: boolean;
   title?: string;
   ariaLabel?: string;
@@ -118,6 +120,7 @@ export default function Dropdown({
   searchPlaceholder,
   emptyText,
   maxVisibleOptions,
+  closeOnSelect = true,
   disabled = false,
   title,
   ariaLabel
@@ -216,6 +219,8 @@ export default function Dropdown({
 
   const pick = (v: string) => {
     onChange(v);
+    // 有些菜单（模型选择）要在选完后继续停留，便于连续调整模型 + 推理强度
+    if (!closeOnSelect) return;
     close();
     triggerRef.current?.focus();
   };

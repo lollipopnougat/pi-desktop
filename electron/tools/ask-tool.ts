@@ -52,28 +52,58 @@ export interface AskToolDetails {
 /** 等待用户回答的 resolver（由 pi-bridge 持有） */
 export type AskResolver = (answers: AskAnswer[] | null) => void;
 
-/** 当前挂起的 ask 请求 */
-let pendingAsk: { questions: AskQuestion[]; resolve: AskResolver } | null = null;
+/**
+ * 挂起的 ask 请求（**按会话分键**：多会话下每个会话各一份，互不覆盖）。
+ * 键 = SDK sessionId（由工具 execute 的 ctx.sessionManager 解析），渲染端也用同一个键回传答案。
+ */
+const pendingAsks = new Map<string, { questions: AskQuestion[]; resolve: AskResolver }>();
 
-/** 注册外部回调：当 ask 请求发起时通知渲染进程 */
-let askNotifier: ((questions: AskQuestion[]) => void) | null = null;
+/** 注册外部回调：当 ask 请求发起时通知渲染进程（sessionKey 标识是哪个会话在提问） */
+let askNotifier: ((sessionKey: string, questions: AskQuestion[]) => void) | null = null;
 
 /** 设置 ask 通知器（由 pi-bridge 调用） */
-export function setAskNotifier(notifier: ((questions: AskQuestion[]) => void) | null) {
+export function setAskNotifier(notifier: ((sessionKey: string, questions: AskQuestion[]) => void) | null) {
   askNotifier = notifier;
 }
 
-/** 渲染进程提交答案时调用（由 pi-bridge IPC 调用） */
-export function resolveAsk(answers: AskAnswer[] | null) {
-  if (pendingAsk) {
-    pendingAsk.resolve(answers);
-    pendingAsk = null;
-  }
+/** 渲染进程提交答案时调用（由 pi-bridge IPC 调用）；找不到该会话的挂起提问则返回 false */
+export function resolveAsk(sessionKey: string, answers: AskAnswer[] | null): boolean {
+  const pending = pendingAsks.get(sessionKey);
+  if (!pending) return false;
+  pendingAsks.delete(sessionKey);
+  pending.resolve(answers);
+  return true;
 }
 
-/** 当前是否有挂起的 ask 请求 */
-export function hasPendingAsk(): boolean {
-  return pendingAsk !== null;
+/** 进程关闭/会话释放时清掉全部挂起提问（按取消结算，避免工具调用永远挂着） */
+export function resolveAllAsks(): number {
+  const count = pendingAsks.size;
+  for (const [key, pending] of [...pendingAsks]) {
+    pendingAsks.delete(key);
+    pending.resolve(null);
+  }
+  return count;
+}
+
+/** 某会话挂起的问题（切回该会话时重新推给渲染进程用） */
+export function pendingAskQuestions(sessionKey: string): AskQuestion[] | null {
+  return pendingAsks.get(sessionKey)?.questions ?? null;
+}
+
+/** 当前是否有挂起的 ask 请求（不传会话键=任意会话） */
+export function hasPendingAsk(sessionKey?: string): boolean {
+  return sessionKey === undefined ? pendingAsks.size > 0 : pendingAsks.has(sessionKey);
+}
+
+/** 从工具 execute 的 ctx 解析当前会话键（取不到时退化为空串，等价单会话） */
+function askSessionKey(ctx: unknown): string {
+  try {
+    const id = (ctx as { sessionManager?: { getSessionId?: () => unknown } } | null)?.sessionManager
+      ?.getSessionId?.();
+    return typeof id === 'string' && id ? id : '';
+  } catch {
+    return '';
+  }
 }
 
 /** ask 工具定义 */
@@ -112,18 +142,33 @@ export const askTool = defineTool({
       { description: '问题列表（1-3个）' }
     )
   }),
-  async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+  async execute(_toolCallId, params, signal, _onUpdate, ctx) {
     const { questions } = params as AskToolArgs;
+    const sessionKey = askSessionKey(ctx);
 
-    // 创建 promise 等待用户响应
+    // 等待用户响应；本轮被 abort（用户点停止 / 会话被替换 / 关闭）时按取消结算，避免挂死
     const answerPromise = new Promise<AskAnswer[] | null>((resolve) => {
-      pendingAsk = { questions, resolve };
+      let settled = false;
+      const onAbort = () => finish(null);
+      const finish = (answers: AskAnswer[] | null) => {
+        if (settled) return;
+        settled = true;
+        if (pendingAsks.get(sessionKey)?.resolve === finish) pendingAsks.delete(sessionKey);
+        signal?.removeEventListener('abort', onAbort);
+        resolve(answers);
+      };
+      if (signal?.aborted) {
+        finish(null);
+        return;
+      }
+      pendingAsks.set(sessionKey, { questions, resolve: finish });
+      signal?.addEventListener('abort', onAbort, { once: true });
     });
 
-    // 通知渲染进程展示 UI
-    if (askNotifier) {
-      askNotifier(questions);
-    }
+    // 通知渲染进程展示 UI（事件带本槽身份，渲染端只展示焦点会话的提问）；
+    // 没有通知器（窗口已销毁/应用在退出）时直接按取消结算
+    if (askNotifier) askNotifier(sessionKey, questions);
+    else resolveAsk(sessionKey, null);
 
     const answers = await answerPromise;
     const cancelled = answers === null;

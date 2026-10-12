@@ -36,6 +36,8 @@ export default function AppearanceTab() {
   const setShowThinkingBlocks = usePiStore((s) => s.setShowThinkingBlocks);
   const collapseToolCalls = usePiStore((s) => s.collapseToolCalls);
   const setCollapseToolCalls = usePiStore((s) => s.setCollapseToolCalls);
+  const sameProjectBusyWarn = usePiStore((s) => s.sameProjectBusyWarn);
+  const setSameProjectBusyWarn = usePiStore((s) => s.setSameProjectBusyWarn);
 
   // 通知设置（主进程读同一份 ui-config.json 裁决是否发送）
   const notifyEnabled = usePiStore((s) => s.notifyEnabled);
@@ -392,6 +394,18 @@ export default function AppearanceTab() {
               checked={collapseToolCalls}
               onChange={setCollapseToolCalls}
               ariaLabel={t.collapseToolCalls}
+            />
+          </div>
+          {/* 同项目并发提醒 */}
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-sm text-od-text-bright">{t.sameProjectBusyWarn}</div>
+              <div className="text-xs text-od-text-dim">{t.sameProjectBusyWarnDesc}</div>
+            </div>
+            <Switch
+              checked={sameProjectBusyWarn}
+              onChange={setSameProjectBusyWarn}
+              ariaLabel={t.sameProjectBusyWarn}
             />
           </div>
         </div>

@@ -1,7 +1,8 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { usePiStore } from '../../store/pi-store';
 import { transitionSession } from '../../hooks/loadSession';
 import { confirmStopRunning, abortRunningTurn } from '../../lib/stopRunningConfirm';
+import { flushSessionRefresh, subscribeSessionRefresh } from '../../lib/session-refresh';
 import ContextMenu, { type MenuItem } from '../common/ContextMenu';
 import PromptModal from '../common/PromptModal';
 import ConfirmDialog from '../common/ConfirmDialog';
@@ -10,6 +11,7 @@ import SessionSearchModal from './SessionSearchModal';
 import Icon from '../common/Icon';
 import { t } from '../../i18n/zh';
 import type { SessionGroup } from '../../types/shared';
+import type { SessionSlotSnapshot } from '../../types/pi';
 
 type SortMode = 'modified' | 'created' | 'createdAsc' | 'name';
 
@@ -49,7 +51,8 @@ export default function SessionSidebar() {
   const sidebarWidth = usePiStore((s) => s.sidebarWidth);
   const setSidebarWidth = usePiStore((s) => s.setSidebarWidth);
   const sidebarOpen = usePiStore((s) => s.sidebarOpen);
-  const sessionVersion = usePiStore((s) => s.sessionVersion);
+  const [refreshTick, setRefreshTick] = useState(0);
+  const sessionSlots = usePiStore((s) => s.sessionSlots);
   const showToast = usePiStore((s) => s.showToast);
   const [groups, setGroups] = useState<SessionGroup[]>([]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -58,6 +61,15 @@ export default function SessionSidebar() {
   const [renameTarget, setRenameTarget] = useState<any | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>('modified');
   const [searchOpen, setSearchOpen] = useState(false);
+  /** 会话行 → 槽状态（按 sessionId 匹配，退而以会话文件路径匹配）：徽标靠它 */
+  const slotBySession = useMemo(() => {
+    const map = new Map<string, SessionSlotSnapshot>();
+    for (const slot of sessionSlots) {
+      if (slot.sessionId) map.set(slot.sessionId, slot);
+      if (slot.sessionFile) map.set(slot.sessionFile, slot);
+    }
+    return map;
+  }, [sessionSlots]);
   const [sortMenu, setSortMenu] = useState<{ x: number; y: number } | null>(null);
   const [projectMenu, setProjectMenu] = useState<{ x: number; y: number; cwd: string } | null>(
     null
@@ -69,6 +81,8 @@ export default function SessionSidebar() {
   const asideRef = useRef<HTMLDivElement>(null);
   const activeItemRef = useRef<HTMLButtonElement>(null);
   const listRequestRef = useRef(0);
+  // 上次渲染的列表签名：数据没变就不重建列表，避免整份重渲染
+  const groupsSignatureRef = useRef('');
 
   // 当前会话变化时：展开所在分组并滚动到可见区域
   useEffect(() => {
@@ -88,9 +102,13 @@ export default function SessionSidebar() {
     }, 50);
   }, [sessionId, groups]);
 
+  // 版本驱动的刷新（agent_end、首条消息落盘…）走共享去抖：一次 bump 只刷一次
+  useEffect(() => subscribeSessionRefresh(() => setRefreshTick((n) => n + 1)), []);
+
+  // 会话切换 / 项目变化 / 排序变化：立即加载
   useEffect(() => {
     loadSessions();
-  }, [sessionId, cwd, sessionVersion, sortMode]);
+  }, [sessionId, cwd, refreshTick, sortMode]);
 
   const loadSessions = async () => {
     const request = ++listRequestRef.current;
@@ -110,7 +128,20 @@ export default function SessionSidebar() {
         gs.map(async (g) => ({ ...g, name: await window.pi.baseName(g.cwd) }))
       );
       if (request !== listRequestRef.current) return;
-      setGroups(named);
+      // 数据没变就不重建列表：一次 agent_end 常常只改了「最后修改时间」，
+      // 无条件 setGroups 会让每轮都整份重建行对象 → 侧栏整块重渲染
+      const signature = named
+        .map(
+          (g) =>
+            `${g.cwd}\u0000${g.name}\u0000${g.sessions
+              .map((s: any) => `${s.id}|${s.name ?? ''}|${s.firstMessage ?? ''}`)
+              .join('\u0001')}`
+        )
+        .join('\u0002');
+      if (signature !== groupsSignatureRef.current) {
+        groupsSignatureRef.current = signature;
+        setGroups(named);
+      }
 
       // Auto-expand current cwd
       const currentCwd = usePiStore.getState().cwd;
@@ -123,8 +154,7 @@ export default function SessionSidebar() {
   };
 
   const handleNewSession = async (targetCwd?: string) => {
-    // 新建会话会重建 session（中止当前轮），运行中先确认
-    if (!(await confirmStopRunning(t.stopRunningActionNew))) return;
+    // 任何项目（含跨项目）新建：旧会话都留在后台继续跑完，不中止、不需要确认
     await transitionSession(() => window.pi.newSession(targetCwd));
   };
 
@@ -160,15 +190,18 @@ export default function SessionSidebar() {
   const buildProjectMenuItems = (targetCwd: string): MenuItem[] => [
     {
       label: isMac ? t.openInFinder : t.openInExplorer,
+      icon: 'folder',
       onClick: () => window.pi.showInFolder(targetCwd)
     },
     {
       label: t.projectInfo,
+      icon: 'info',
       onClick: () => setShowProjectInfo(targetCwd)
     },
     { label: '', separator: true },
     {
       label: t.removeProject,
+      icon: 'delete',
       danger: true,
       onClick: () => setConfirmRemove(targetCwd)
     }
@@ -204,19 +237,30 @@ export default function SessionSidebar() {
   ];
 
   const handleSwitchSession = async (session: any) => {
-    // 切换会话会中止当前轮（SDK 在切换前 await abort），运行中先让用户确认
-    if (!(await confirmStopRunning(t.stopRunningActionSwitch))) return;
-    await transitionSession(() => window.pi.switchSession(session.path), sessionLabel(session));
+    // 旧会话进后台继续跑完，切回来直接复用槽（不重建、不中止）——跨项目也一样
+    // 还没落盘的新会话没有 path：主进程两种参数都认（openSessionInSlot）
+    await transitionSession(
+      () => window.pi.switchSession(session.path || session.id),
+      sessionLabel(session)
+    );
   };
 
   // === 会话右键菜单操作 ===
   const sessionLabel = (s: any) =>
-    s.name || s.firstMessage?.substring(0, 40) || s.id?.substring(0, 8) || s.pathBase || '会话';
+    s.name ||
+    // 空会话 SDK 给的是字面量 "(no messages)"，别把它当标题显示
+    (s.firstMessage && s.firstMessage !== '(no messages)'
+      ? s.firstMessage.substring(0, 40)
+      : t.sessionUnnamed) ||
+    s.id?.substring(0, 8) ||
+    s.pathBase ||
+    '会话';
 
   const handleCtxCopy = async (s: any) => {
     try {
       await window.pi.duplicateSession(s.path);
-      await loadSessions();
+      // 用户主动操作：立即刷新（并取消挂起的去抖刷新）
+      flushSessionRefresh();
     } catch (e: any) {
       console.error('duplicate session failed:', e);
     }
@@ -233,7 +277,7 @@ export default function SessionSidebar() {
     if (!name.trim()) return;
     try {
       await window.pi.renameSession(s.path, name.trim());
-      await loadSessions();
+      flushSessionRefresh();
     } catch (e: any) {
       console.error('rename session failed:', e);
     }
@@ -260,10 +304,10 @@ export default function SessionSidebar() {
       filters: [{ name: 'HTML', extensions: ['html'] }]
     });
     if (!out) return;
-    // 导出 HTML 内部会临时切到目标会话再切回来（等于中止当前轮），运行中先确认
-    if (!(await confirmStopRunning(t.stopRunningActionExport))) return;
+    // 主进程两条路径都免切换：已在槽里用该槽的 session 导出（带 systemPrompt/tools 附录），
+    // 磁盘上的旧会话用 SDK 的 exportFromFile 直接读文件导出（无附录），都不中止当前轮。
     try {
-      await transitionSession(() => window.pi.exportSessionHtml(s.path, out));
+      await window.pi.exportSessionHtml(s.path, out);
     } catch (e: any) {
       console.error('export html failed:', e);
     }
@@ -277,8 +321,14 @@ export default function SessionSidebar() {
     const s = confirmDeleteSession;
     if (!s) return;
     try {
+      // 删的是当前会话：先停掉在跑的回合（删除等于放弃它），再落到一个新会话上。
+      // 顺序很重要：不先切走的话，删完文件当前会话就悬空了，主进程也会拦这种删除。
+      if (s.id === sessionId) {
+        await abortRunningTurn();
+        await transitionSession(() => window.pi.newSession(s.cwd));
+      }
       await window.pi.deleteSession(s.path);
-      await loadSessions();
+      flushSessionRefresh();
     } catch (e: any) {
       // 原先用 window.alert：renderer 里唯一的原生弹窗，与全应用的 toast 反馈不一致
       showToast(t.sessionDeleteFail(String(e?.message || e)), { variant: 'error' });
@@ -293,19 +343,35 @@ export default function SessionSidebar() {
   };
 
   const ctxMenuItems: MenuItem[] = ctxMenu
-    ? [
-        { label: t.ctxCopySession, onClick: () => handleCtxCopy(ctxMenu.session) },
-        { label: t.ctxRenameSession, onClick: () => handleCtxRename(ctxMenu.session) },
-        { separator: true, label: '' },
-        { label: t.ctxExportJsonl, onClick: () => handleCtxExportJsonl(ctxMenu.session) },
-        { label: t.ctxExportHtml, onClick: () => handleCtxExportHtml(ctxMenu.session) },
-        { separator: true, label: '' },
-        {
-          label: t.ctxDeleteSession,
-          danger: true,
-          onClick: () => handleCtxDelete(ctxMenu.session)
-        }
-      ]
+    ? !ctxMenu.session.path
+      ? // 尚未落盘的新会话（该行由主进程用槽状态补出来）：文件相关操作暂时都不适用
+        [{ header: true, label: t.sessionNotSavedYet }]
+      : [
+          { label: t.ctxCopySession, icon: 'copy', onClick: () => handleCtxCopy(ctxMenu.session) },
+          {
+            label: t.ctxRenameSession,
+            icon: 'pencil',
+            onClick: () => handleCtxRename(ctxMenu.session)
+          },
+          { separator: true, label: '' },
+          {
+            label: t.ctxExportJsonl,
+            icon: 'file',
+            onClick: () => handleCtxExportJsonl(ctxMenu.session)
+          },
+          {
+            label: t.ctxExportHtml,
+            icon: 'download',
+            onClick: () => handleCtxExportHtml(ctxMenu.session)
+          },
+          { separator: true, label: '' },
+          {
+            label: t.ctxDeleteSession,
+            icon: 'delete',
+            danger: true,
+            onClick: () => handleCtxDelete(ctxMenu.session)
+          }
+        ]
     : [];
 
   // Drag to resize sidebar width
@@ -427,26 +493,70 @@ export default function SessionSidebar() {
                   <div className="mt-0.5 space-y-0.5 pb-1">
                     {group.sessions.map((s) => {
                       const active = s.id === sessionId;
+                      const slot =
+                        (s.id ? slotBySession.get(s.id) : undefined) ??
+                        (s.path ? slotBySession.get(s.path) : undefined);
+                      // 后台会话也在跑：徽标/停止按钮按槽状态（不再只看焦点会话的 isStreaming）
                       const isActiveStreaming = active && isStreaming;
+                      const running = slot?.running ?? isActiveStreaming;
+                      const waitingApproval =
+                        (slot?.pendingApprovals ?? 0) > 0 || (slot?.pendingAsks ?? 0) > 0;
+                      const unread = !running && (slot?.unread ?? false);
                       return (
-                        <button
+                        <div
                           key={s.id || s.path}
-                          ref={active ? activeItemRef : undefined}
-                          onClick={() => handleSwitchSession(s)}
-                          onContextMenu={(e) => onSessionContextMenu(e, s)}
-                          className={`flex w-full items-center gap-1 rounded-md py-1.5 pl-7 pr-2 text-left text-sm transition-colors ${
+                          className={`group flex w-full items-center gap-1 rounded-md py-1.5 pl-7 pr-2 text-left text-sm transition-colors ${
                             active
                               ? 'bg-od-accent/15 text-od-accent'
                               : 'text-od-text hover:bg-od-bg-hover'
                           }`}
                         >
-                          {isActiveStreaming ? (
-                            <Icon name="spinner" spin className="w-3 shrink-0 text-od-accent" />
+                          <button
+                            ref={active ? activeItemRef : undefined}
+                            onClick={() => handleSwitchSession(s)}
+                            onContextMenu={(e) => onSessionContextMenu(e, s)}
+                            className="flex min-w-0 flex-1 items-center gap-1 text-left"
+                          >
+                            {running || isActiveStreaming ? (
+                              <Icon name="spinner" spin className="w-3 shrink-0 text-od-accent" />
+                            ) : unread ? (
+                              <span title={t.sessionUnreadBadge} className="flex shrink-0">
+                                <Icon name="circle" className="w-2 text-od-accent" />
+                              </span>
+                            ) : null}
+                            <span className="truncate" title={s.path || undefined}>
+                              {sessionLabel(s)}
+                            </span>
+                            {(slot?.queuedPrompts ?? 0) > 0 ? (
+                              <span
+                                title={t.sessionQueuedBadge}
+                                className="flex shrink-0 text-od-text-dim"
+                              >
+                                <Icon name="clock" className="w-3" />
+                              </span>
+                            ) : null}
+                            {waitingApproval ? (
+                              <span
+                                title={t.sessionPendingApproval}
+                                className="flex shrink-0 text-od-warning"
+                              >
+                                <Icon name="hand" className="w-3" />
+                              </span>
+                            ) : null}
+                          </button>
+                          {running && !active ? (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void window.pi.abort(slot?.key ?? null);
+                              }}
+                              title={t.stopBackgroundSession}
+                              className="flex shrink-0 items-center justify-center rounded p-0.5 text-od-text-dim opacity-0 transition-opacity hover:bg-od-bg-hover hover:text-od-text-bright group-hover:opacity-100"
+                            >
+                              <Icon name="stop" className="w-3" />
+                            </button>
                           ) : null}
-                          <span className="truncate" title={s.path || undefined}>
-                            {sessionLabel(s)}
-                          </span>
-                        </button>
+                        </div>
                       );
                     })}
                   </div>
@@ -532,7 +642,13 @@ export default function SessionSidebar() {
       <ConfirmDialog
         open={confirmDeleteSession !== null}
         title={t.deleteSession}
-        message={confirmDeleteSession ? t.deleteConfirm(sessionLabel(confirmDeleteSession)) : ''}
+        message={
+          confirmDeleteSession
+            ? confirmDeleteSession.id === sessionId
+              ? t.deleteActiveConfirm(sessionLabel(confirmDeleteSession))
+              : t.deleteConfirm(sessionLabel(confirmDeleteSession))
+            : ''
+        }
         confirmText={t.delete}
         danger
         onConfirm={performDeleteSession}

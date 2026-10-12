@@ -131,7 +131,7 @@ interface SubagentPanelProps {
 }
 
 export default function SubagentPanel({ open, onClose }: SubagentPanelProps) {
-  const { subagentSnapshot } = usePiStore();
+  const subagentSnapshot = usePiStore((s) => s.subagentSnapshot);
   const [detailRunId, setDetailRunId] = useState<string | null>(null);
   // 面板打开时拉一次快照:覆盖「重开应用后面板未收到推送」的场景(历史 run 已从会话恢复)
   useEffect(() => {

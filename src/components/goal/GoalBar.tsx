@@ -5,6 +5,7 @@
  * 流式时隐藏(避免遮挡)。无 active goal 时隐藏。
  */
 import { usePiStore } from '../../store/pi-store';
+import { useShallow } from 'zustand/react/shallow';
 import { t } from '../../i18n/zh';
 import Icon from '../common/Icon';
 import { formatTokens } from '../../utils/format';
@@ -22,7 +23,12 @@ const STATUS_STYLES: Record<string, { color: string; label: string; icon: string
 };
 
 export default function GoalBar() {
-  const { goalSnapshot, setGoalEditDialogOpen } = usePiStore();
+  const { goalSnapshot, setGoalEditDialogOpen } = usePiStore(
+    useShallow((s) => ({
+      goalSnapshot: s.goalSnapshot,
+      setGoalEditDialogOpen: s.setGoalEditDialogOpen
+    }))
+  );
   if (!goalSnapshot?.goal) return null;
   // 目标已完成/阻塞后隐藏 GoalBar(标记已在消息上显示)
   if (goalSnapshot.goal.status === 'complete' || goalSnapshot.goal.status === 'blocked') {

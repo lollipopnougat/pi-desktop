@@ -5,6 +5,7 @@ import { confirmStopRunning } from '../../lib/stopRunningConfirm';
 import Icon from '../common/Icon';
 import type { IconName } from '../common/icons';
 import { t } from '../../i18n/zh';
+import { subscribeSessionRefresh } from '../../lib/session-refresh';
 import type { TreeNode } from '../../types/shared';
 
 interface TreeViewProps {
@@ -68,7 +69,7 @@ export default function TreeView(props: TreeViewProps) {
 
 function SessionTreeView({ onClose }: TreeViewProps) {
   const isMac = window.pi?.platform === 'darwin';
-  const sessionVersion = usePiStore((s) => s.sessionVersion);
+  const [refreshTick, setRefreshTick] = useState(0);
   const isSessionLoading = usePiStore((s) => s.isSessionLoading);
   const [tree, setTree] = useState<TreeNode[] | null>(null);
   const [leafId, setLeafId] = useState<string | null>(null);
@@ -136,6 +137,9 @@ function SessionTreeView({ onClose }: TreeViewProps) {
     }
   }, []);
 
+  // 版本驱动的刷新（agent_end…）走共享去抖：与侧栏、标题栏合并成一次
+  useEffect(() => subscribeSessionRefresh(() => setRefreshTick((n) => n + 1)), []);
+
   useEffect(() => {
     if (isSessionLoading) return;
     let cancelled = false;
@@ -144,7 +148,7 @@ function SessionTreeView({ onClose }: TreeViewProps) {
     return () => {
       cancelled = true;
     };
-  }, [sessionVersion, isSessionLoading, loadTree]);
+  }, [refreshTick, isSessionLoading, loadTree]);
 
   // 执行跳转。summarize=true 时 SDK 会先生成被离弃分支的总结（branch_summary）
   // 再切 leaf（模仿 pi TUI /tree 的总结离开分支行为）。

@@ -20,10 +20,15 @@ function createExecutorHandle() {
     cwd: '/p',
     agentDir: '/a',
     modelRuntime: {},
-    getSession: () => ({})
+    getSession: () => ({}),
+    sessionHost: () => ({
+      current: () => ({}),
+      cwd: () => '/p',
+      sendSessionEvent: () => true
+    })
   } as any;
-  const controller = new SubagentController(bridge);
-  const executor: any = new SubagentExecutor(bridge, controller);
+  const controller = new SubagentController(bridge, bridge.sessionHost());
+  const executor: any = new SubagentExecutor(bridge, controller, bridge.sessionHost());
   const raw = executor.handleChildEvent.bind(executor);
   // 本文件关注工具流水;对话流参数给默认值,调用点保持精简
   return (
@@ -188,9 +193,14 @@ describe('controller 快照瘦身(slimRun)', () => {
       cwd: '/p',
       agentDir: '/a',
       modelRuntime: {},
-      getSession: () => ({})
+      getSession: () => ({}),
+      sessionHost: () => ({
+        current: () => ({}),
+        cwd: () => '/p',
+        sendSessionEvent: () => true
+      })
     } as any;
-    const controller = new SubagentController(bridge);
+    const controller = new SubagentController(bridge, bridge.sessionHost());
     (controller as any).definitions = { agents: [], diagnostics: [] };
     (controller as any).loadedForCwd = '/p';
     (controller as any).runs.push({ ...makeRun(), ...runOverrides });

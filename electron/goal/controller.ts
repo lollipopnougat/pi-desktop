@@ -11,6 +11,7 @@
  * 扩展钩子通过 controller 读写状态。
  */
 import type { PiBridge } from '../pi-bridge';
+import type { SessionHost } from '../session-slot';
 import { GoalRuntime, DEFAULT_GOAL_CONFIG, type GoalRuntimeConfig } from './runtime';
 import type { ActiveGoal, GoalStatus } from './persistence';
 import { buildContinuePrompt } from './prompts';
@@ -45,11 +46,14 @@ export interface GoalSnapshot {
 
 export class GoalController {
   private piBridge: PiBridge;
+  /** 所服务的会话（Stage 0 = 焦点槽；多会话阶段按槽注入） */
+  private host: SessionHost;
   private runtime: GoalRuntime;
   private config: GoalRuntimeConfig = { ...DEFAULT_GOAL_CONFIG };
 
-  constructor(piBridge: PiBridge) {
+  constructor(piBridge: PiBridge, host: SessionHost) {
     this.piBridge = piBridge;
+    this.host = host;
     this.runtime = new GoalRuntime(
       {
         getCurrentUsage: () => this.getCurrentUsage(),
@@ -69,7 +73,7 @@ export class GoalController {
 
   private getCurrentUsage() {
     try {
-      const stats = this.piBridge.getSession()?.getSessionStats?.();
+      const stats = this.host.current()?.getSessionStats?.();
       if (!stats?.tokens) return null;
       return {
         input: stats.tokens.input ?? 0,
@@ -84,7 +88,7 @@ export class GoalController {
 
   private getBranchEntries(): any[] {
     try {
-      const sm = this.piBridge.getSession()?.sessionManager;
+      const sm = this.host.current()?.sessionManager;
       if (!sm) return [];
       // ReadonlySessionManager.getBranch()
       return sm.getBranch?.() ?? sm.getEntries?.() ?? [];
@@ -95,7 +99,7 @@ export class GoalController {
 
   private persistGoal(goal: ActiveGoal | null): void {
     try {
-      const session = this.piBridge.getSession();
+      const session = this.host.current();
       if (!session) return;
       const sm = session.sessionManager;
       if (!sm) return;
@@ -150,14 +154,14 @@ export class GoalController {
 
   private emitUpdate(): void {
     const snap = this.getSnapshot();
-    this.piBridge.sendSessionEvent('pi:goalUpdate', snap);
+    this.host.sendSessionEvent('pi:goalUpdate', snap);
   }
 
   // ─── IPC 指令(供 goal-ipc 调用) ───
 
   createGoal(text: string, tokenBudget?: number): boolean {
     // 进入 goal 前先退出 plan(互斥)
-    this.piBridge.setPlanMode(false);
+    this.host.setPlanMode(false);
     const goal = this.runtime.createGoal(text, tokenBudget);
     this.refreshGoalToolVisibility();
     return goal !== null;
@@ -167,7 +171,7 @@ export class GoalController {
     this.runtime.pauseGoal();
     // 暂停时立即中断当前正在运行的 turn
     try {
-      this.piBridge.getSession()?.abort();
+      this.host.current()?.abort();
     } catch {}
     this.refreshGoalToolVisibility();
   }
@@ -185,7 +189,7 @@ export class GoalController {
     if (!rt.goal || rt.goal.status !== 'active') return;
     // 如果 agent 正在跑,不重复触发
     try {
-      const session = this.piBridge.getSession();
+      const session = this.host.current();
       if (!session || session.isStreaming) return;
     } catch {
       return;
@@ -197,7 +201,7 @@ export class GoalController {
     const prompt = rt.dispatchContinuation(true, false);
     if (prompt) {
       try {
-        this.piBridge.getSession().sendUserMessage(prompt, { deliverAs: 'followUp' });
+        this.host.current()?.sendUserMessage(prompt, { deliverAs: 'followUp' });
       } catch {}
     }
   }
@@ -206,7 +210,7 @@ export class GoalController {
     this.runtime.clearGoal();
     // 清除时立即中断当前正在运行的 turn
     try {
-      this.piBridge.getSession()?.abort();
+      this.host.current()?.abort();
     } catch {}
     this.refreshGoalToolVisibility();
   }
@@ -221,7 +225,7 @@ export class GoalController {
     const rt = this.runtime;
     if (!rt.goal) return;
     try {
-      const msgs = this.piBridge.getSession()?.messages ?? [];
+      const msgs = this.host.current()?.messages ?? [];
       const lastAssistant = [...msgs].reverse().find((m: any) => m.role === 'assistant');
       if (lastAssistant) {
         rt.setCompletedMessage(lastAssistant.timestamp);
@@ -232,7 +236,7 @@ export class GoalController {
   /** 根据当前 goal 状态调整 goal 工具可见性(有 active goal 时可见,否则隐藏) */
   refreshGoalToolVisibility(): void {
     try {
-      const session = this.piBridge.getSession();
+      const session = this.host.current();
       if (!session) return;
       const current = session.getActiveToolNames() as string[];
       const allTools = (session.getAllTools?.() ?? []).map((t: any) => t.name);

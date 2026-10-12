@@ -45,6 +45,17 @@ export interface ChatTurn {
   items: ChatRenderItem[];
 }
 
+/**
+ * 构建到一半的状态：`items` 是已经定稿的渲染条目，`activities`/`seenTools` 是跨消息携带的
+ * 未闭合工具活动与已见的工具 ID。流式部分靠它接续历史（否则流式条会另起一个工具组，
+ * 与「一次性构建整表」的结果不一致）。
+ */
+export interface ChatItemBuildState {
+  items: ChatRenderItem[];
+  activities: ToolActivity[];
+  seenTools: Set<string>;
+}
+
 /** 每条可见用户消息开始一轮，后续回复、思考和工具活动归属该轮。 */
 export function groupChatItemsByTurn(items: ChatRenderItem[]): ChatTurn[] {
   const turns: ChatTurn[] = [];
@@ -63,14 +74,18 @@ export function groupChatItemsByTurn(items: ChatRenderItem[]): ChatTurn[] {
   return turns;
 }
 
-/** 正文、用户消息和错误是边界；工具结果及思考不打断连续工具活动。 */
-export function buildChatItems(
-  messages: ChatMessage[],
-  streamingMessage: ChatMessage | null
-): ChatRenderItem[] {
-  const items: ChatRenderItem[] = [];
-  let activities: ToolActivity[] = [];
-  const seenTools = new Set<string>();
+/**
+ * 条目构建器。允许从已有状态续建（流式增量），并按消息粒度复用同一套分组/去重逻辑。
+ * `seed` 的数组会被复制：调用方的状态不能被追加污染（历史前缀要跨帧复用）。
+ */
+function createBuilder(seed?: ChatItemBuildState) {
+  const items: ChatRenderItem[] = seed ? seed.items.slice() : [];
+  // seed 已有的条目属于历史，只有其后的条目才是本次新增（流式增量只渲染这部分）
+  const start = items.length;
+  let activities: ToolActivity[] = seed ? seed.activities.slice() : [];
+  const seenTools: Set<string> = seed ? new Set(seed.seenTools) : new Set<string>();
+
+  /** 未闭合活动定稿成条目：有工具时成一个工具组，否则逐个渲染思考块。 */
   const flushActivities = () => {
     const firstTool = activities.find((item) => item.type === 'tool');
     if (firstTool?.type === 'tool') {
@@ -91,12 +106,9 @@ export function buildChatItems(
     activities = [];
   };
 
-  const sources = messages.map((message, index) => ({ message, index, isStreaming: false }));
-  if (streamingMessage) {
-    sources.push({ message: streamingMessage, index: messages.length, isStreaming: true });
-  }
-  for (const { message, index, isStreaming } of sources) {
-    if (message.role === 'toolResult') continue;
+  /** 正文、用户消息和错误是边界；工具结果及思考不打断连续工具活动。 */
+  const addSource = (message: ChatMessage, index: number, isStreaming: boolean) => {
+    if (message.role === 'toolResult') return;
     const content =
       typeof message.content === 'string'
         ? [{ type: 'text', text: message.content }]
@@ -104,15 +116,15 @@ export function buildChatItems(
     const messageKey = `${message.timestamp ?? 'live'}:${index}`;
     if (message.role === 'user') {
       if (content.some((block) => /<!-- goal-continuation: [\w:-]+ -->/.test(block.text ?? ''))) {
-        continue;
+        return;
       }
       flushActivities();
       items.push({ type: 'user', key: `user:${messageKey}`, message });
-      continue;
+      return;
     }
     if (message.role !== 'assistant' && !isStreaming) {
       flushActivities();
-      continue;
+      return;
     }
     if (message.stopReason === 'error' && message.errorMessage) {
       flushActivities();
@@ -169,7 +181,46 @@ export function buildChatItems(
     });
     // 报错之后的新调用属于新的执行片段。
     if (message.stopReason === 'error') flushActivities();
-  }
-  flushActivities();
-  return items;
+  };
+
+  return {
+    addSource,
+    flushActivities,
+    /** 本次续建新增的条目（不含 seed 里的历史条目） */
+    freshItems: () => items.slice(start),
+    state: (): ChatItemBuildState => ({ items, activities, seenTools })
+  };
+}
+
+/**
+ * 构建历史消息（不含流式消息）。**刻意不做收尾 flush**：末尾未闭合的工具/思考活动
+ * 由 buildStreamingItems 接续，保证与「历史+流式一次性构建」完全一致。
+ */
+export function buildMessageItems(messages: ChatMessage[]): ChatItemBuildState {
+  const builder = createBuilder();
+  messages.forEach((message, index) => builder.addSource(message, index, false));
+  return builder.state();
+}
+
+/**
+ * 构建流式消息的条目：接续历史未闭合活动并收尾 flush，返回**只有新增**的条目。
+ * 每帧只处理还在增长的那条消息，历史条目由 buildMessageItems 的结果复用。
+ */
+export function buildStreamingItems(
+  state: ChatItemBuildState,
+  streamingMessage: ChatMessage | null
+): ChatRenderItem[] {
+  const builder = createBuilder(state);
+  if (streamingMessage) builder.addSource(streamingMessage, state.items.length, true);
+  builder.flushActivities();
+  return builder.freshItems();
+}
+
+/** 历史 + 流式的完整条目；等价于 buildMessageItems 的结果拼接 buildStreamingItems。 */
+export function buildChatItems(
+  messages: ChatMessage[],
+  streamingMessage: ChatMessage | null
+): ChatRenderItem[] {
+  const state = buildMessageItems(messages);
+  return [...state.items, ...buildStreamingItems(state, streamingMessage)];
 }

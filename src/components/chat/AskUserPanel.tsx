@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { usePiStore, type AskQuestion, type AskAnswer } from '../../store/pi-store';
+import { useShallow } from 'zustand/react/shallow';
 import Icon from '../common/Icon';
 import { t } from '../../i18n/zh';
 
@@ -9,7 +10,13 @@ import { t } from '../../i18n/zh';
  * 提交后通过 window.pi.askUserResponse 回传答案给主进程。
  */
 export default function AskUserPanel() {
-  const { askQuestions, setAskQuestions } = usePiStore();
+  const { askQuestions, askSessionId, setAskQuestions } = usePiStore(
+    useShallow((s) => ({
+      askQuestions: s.askQuestions,
+      askSessionId: s.askSessionId,
+      setAskQuestions: s.setAskQuestions
+    }))
+  );
   const [currentIdx, setCurrentIdx] = useState(0);
   // 每个问题的答案：selectedLabels + customInput
   const [answers, setAnswers] = useState<Record<string, { labels: string[]; custom: string }>>({});
@@ -63,12 +70,12 @@ export default function AskUserPanel() {
         customInput: wasCustom ? a.custom || undefined : undefined
       };
     });
-    window.pi.askUserResponse(results);
+    window.pi.askUserResponse(askSessionId ?? '', results);
     setAskQuestions(null);
   };
 
   const handleCancel = () => {
-    window.pi.askUserResponse(null);
+    window.pi.askUserResponse(askSessionId ?? '', null);
     setAskQuestions(null);
   };
 

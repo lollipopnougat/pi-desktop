@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { memo, useState, useEffect } from 'react';
 import { usePiStore } from '../../../store/pi-store';
 import Icon from '../../common/Icon';
 import Markdown from '../../common/Markdown';
@@ -79,7 +79,15 @@ function AssistantMessage({
       <div className="space-y-2">
         {content.map((block: any, i: number) => {
           if (block.type === 'text') {
-            return <Markdown key={i} content={block.text} openLinksInBrowser />;
+            return (
+              <Markdown
+                key={i}
+                content={block.text}
+                openLinksInBrowser
+                // 只有「本块正在增长」才走流式分块渲染：闭合的块仍整篇高亮
+                streaming={isStreaming && i === content.length - 1}
+              />
+            );
           }
           if (block.type === 'thinking') {
             if (!showThinkingBlocks) return null;
@@ -132,4 +140,5 @@ function AssistantMessage({
   );
 }
 
-export default AssistantMessage;
+// memo：历史条目 props 引用稳定时整条跳过，流式期间不再逐帧重渲染全部回答
+export default memo(AssistantMessage);

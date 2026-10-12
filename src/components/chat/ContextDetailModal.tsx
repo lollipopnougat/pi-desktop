@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Icon from '../common/Icon';
 import { t } from '../../i18n/zh';
 import { formatTokens as fmt } from '../../utils/format';
+import { usePiStore } from '../../store/pi-store';
 
 /** 估算 token（与 SDK 的 estimateTokens 保持同一思路：chars/4） */
 function estimateTokens(msg: any): number {
@@ -66,21 +67,61 @@ export default function ContextDetailModal({ onClose }: { onClose: () => void })
   const isMac = window.pi?.platform === 'darwin';
   const [data, setData] = useState<ContextDetailData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  // 轮询与手动刷新可能重叠：只认最后一次请求的结果
+  const requestRef = useRef(0);
+  const aliveRef = useRef(true);
+
+  // mode：initial=首次拉取（错误铺满面板）；silent=自动刷新（失败保留旧内容）；
+  // manual=用户点刷新（转圈提示，只在点击时给反馈，2.5s 轮询不闪）
+  const load = useCallback(async (mode: 'initial' | 'silent' | 'manual') => {
+    const id = ++requestRef.current;
+    if (mode === 'manual') setRefreshing(true);
+    try {
+      const d = await window.pi.getContextDetail();
+      if (!aliveRef.current || id !== requestRef.current) return;
+      setData(d);
+      setError(null);
+      setUpdatedAt(new Date());
+    } catch (e: any) {
+      if (!aliveRef.current || id !== requestRef.current) return;
+      // 静默刷新失败保留已有内容，只有首次加载才把错误铺满面板
+      if (mode === 'initial') setError(e?.message || t.contextDetailLoadFailed);
+    } finally {
+      if (aliveRef.current && id === requestRef.current) setRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    window.pi
-      .getContextDetail()
-      .then((d) => {
-        if (!cancelled) setData(d);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e?.message || t.contextDetailLoadFailed);
-      });
+    aliveRef.current = true;
+    // 微任务里发起首次拉取：避免「在 effect 体内同步 setState」的级联渲染告警
+    void Promise.resolve().then(() => load('initial'));
     return () => {
-      cancelled = true;
+      aliveRef.current = false;
     };
-  }, []);
+  }, [load]);
+
+  // 面板打开期间跟随会话状态刷新：stats / sessionVersion 只在「一次 run 结算」时变化，
+  // 所以面板不会一直陈旧，也不需要额外开销（首次挂载已由上面的 initial 拉取覆盖）。
+  const stats = usePiStore((s) => s.stats);
+  const sessionVersion = usePiStore((s) => s.sessionVersion);
+  const isStreaming = usePiStore((s) => s.isStreaming);
+  const autoSkipFirstRef = useRef(true);
+  useEffect(() => {
+    if (autoSkipFirstRef.current) {
+      autoSkipFirstRef.current = false;
+      return;
+    }
+    void load('silent');
+  }, [stats, sessionVersion, load]);
+
+  // 流式期间数字在动：2.5s 轮询一次（关掉面板即停）；主进程侧 getSessionStats 只遍历内存 entries，很轻
+  useEffect(() => {
+    if (!isStreaming) return;
+    const timer = setInterval(() => void load('silent'), 2500);
+    return () => clearInterval(timer);
+  }, [isStreaming, load]);
 
   // ====== 组成明细 ======
   const breakdown: BreakdownRow[] = useMemo(() => {
@@ -180,9 +221,26 @@ export default function ContextDetailModal({ onClose }: { onClose: () => void })
               </span>
             )}
           </h2>
-          <button onClick={onClose} className="text-od-text-dim hover:text-od-text-bright">
-            <Icon name="close" size="sm" />
-          </button>
+          <div className="flex items-center gap-2">
+            {updatedAt && (
+              <span className="text-xs text-od-text-dim">
+                {t.contextDetailUpdatedAt(
+                  updatedAt.toLocaleTimeString('zh-CN', { hour12: false })
+                )}
+              </span>
+            )}
+            <button
+              onClick={() => void load('manual')}
+              disabled={refreshing}
+              title={t.contextDetailRefresh}
+              className="text-od-text-dim hover:text-od-text-bright disabled:opacity-60"
+            >
+              <Icon name={refreshing ? 'spinner' : 'refresh'} spin={refreshing} size="sm" />
+            </button>
+            <button onClick={onClose} className="text-od-text-dim hover:text-od-text-bright">
+              <Icon name="close" size="sm" />
+            </button>
+          </div>
         </div>
 
         {error ? (

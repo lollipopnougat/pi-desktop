@@ -90,6 +90,21 @@ body,
   margin-bottom: 2px;
 }
 
+/* 书签栏（长会话装不下时）滚动条：4px 细条，不挤占书签宽度 */
+.bookmark-strip::-webkit-scrollbar {
+  width: 4px;
+}
+.bookmark-strip::-webkit-scrollbar-track {
+  background: transparent;
+}
+.bookmark-strip::-webkit-scrollbar-thumb {
+  background: rgb(var(--od-border));
+  border-radius: 2px;
+}
+.bookmark-strip::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--od-border-light));
+}
+
 /* ===== 输入框 focus 样式统一 =====
  * 移除浏览器默认 outline，用主题蓝色边框高亮。
  */

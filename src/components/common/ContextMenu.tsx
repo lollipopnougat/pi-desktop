@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import Icon from './Icon';
+import type { IconName } from './icons';
 
 export interface MenuItem {
   label: string;
@@ -10,6 +11,8 @@ export interface MenuItem {
   header?: boolean;
   /** 在标签前显示选中对勾图标（FontAwesome） */
   active?: boolean;
+  /** 在标签前显示图标（FontAwesome，名字见 src/components/common/icons.ts 的 IconName） */
+  icon?: IconName;
 }
 
 interface ContextMenuProps {
@@ -71,7 +74,12 @@ export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps) 
             }`}
           >
             <span className="flex w-3 items-center justify-center">
-              {item.active && <Icon name="check" className="w-3 text-od-accent" />}
+              {item.active ? (
+                <Icon name="check" className="w-3 text-od-accent" />
+              ) : item.icon ? (
+                // danger 项不指定颜色，跟随标签的红色
+                <Icon name={item.icon} className={`w-3 ${item.danger ? '' : 'text-od-text-dim'}`} />
+              ) : null}
             </span>
             {item.label}
           </button>

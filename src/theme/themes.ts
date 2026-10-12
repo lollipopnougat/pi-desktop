@@ -126,7 +126,7 @@ export const THEME_FAMILIES: ThemeFamily[] = [
         text: '204 204 204',
         'text-bright': '204 204 204',
         'text-dim': '126 126 126',
-        accent: '0 110 202',
+        accent: '0 135 250',
         green: '74 194 168',
         red: '246 71 67',
         yellow: '255 208 49',

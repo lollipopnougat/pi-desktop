@@ -31,7 +31,15 @@ function setup(steering: string[], followUp: string[]) {
     clearQueue: vi.fn(() => ({ steering: [...steering], followUp: [...followUp] }))
   };
   mocks.handle.mockClear();
-  registerMiscIpc({ getSession: () => session } as unknown as MiscContext);
+  registerMiscIpc({
+    sessionFor: () => ({
+      requireSession: () => session,
+      session,
+      cwd: '/project',
+      access: {},
+      identity: () => ({})
+    })
+  } as unknown as MiscContext);
   return (channel: string) => mocks.handle.mock.calls.find(([c]) => c === channel)![1];
 }
 

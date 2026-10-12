@@ -20,7 +20,10 @@
     "allowSyntheticDefaultImports": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@pi-export-html": [
+        "node_modules/@earendil-works/pi-coding-agent/dist/core/export-html/index"
+      ]
     }
   },
   "include": ["src", "electron", "preload.ts"],

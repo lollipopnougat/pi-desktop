@@ -1,4 +1,5 @@
 import { usePiStore } from '../store/pi-store';
+import { useShallow } from 'zustand/react/shallow';
 import { useEffect, useState } from 'react';
 import Icon from './common/Icon';
 import GitBranchButton from './GitBranchButton';
@@ -6,7 +7,15 @@ import { t } from '../i18n/zh';
 import { formatTokens } from '../utils/format';
 
 export default function Footer() {
-  const { stats, model, thinkingLevel, cwd, setSettingsOpen } = usePiStore();
+  const { stats, model, thinkingLevel, cwd, setSettingsOpen } = usePiStore(
+    useShallow((s) => ({
+      stats: s.stats,
+      model: s.model,
+      thinkingLevel: s.thinkingLevel,
+      cwd: s.cwd,
+      setSettingsOpen: s.setSettingsOpen
+    }))
+  );
   const [cwdName, setCwdName] = useState(cwd);
 
   // 跨平台取项目名（renderer 无法直接用 node path.basename）

@@ -11,8 +11,10 @@ export { updatePlanTool } from './todo-tool';
 export {
   askTool,
   resolveAsk,
+  resolveAllAsks,
   setAskNotifier,
   hasPendingAsk,
+  pendingAskQuestions,
   type AskQuestion,
   type AskAnswer
 } from './ask-tool';

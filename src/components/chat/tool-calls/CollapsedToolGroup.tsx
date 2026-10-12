@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { memo, useId, useState } from 'react';
 import { usePiStore } from '../../../store/pi-store';
 import Icon from '../../common/Icon';
 import { t } from '../../../i18n/zh';
@@ -8,7 +8,7 @@ import type { ToolActivity } from '../chat-items';
 import { toolActivityLabel } from './tool-presentation';
 
 /** 连续工具活动的两级展开：摘要 -> 工具列表 -> 单项入参和结果。 */
-export default function CollapsedToolGroup({ activities }: { activities: ToolActivity[] }) {
+function CollapsedToolGroup({ activities }: { activities: ToolActivity[] }) {
   const collapseToolCalls = usePiStore((s) => s.collapseToolCalls);
   // 设置变化立即采用新的默认值；流式追加不重置用户在当前组的选择。
   return (
@@ -100,3 +100,6 @@ function ToolGroup({
     </div>
   );
 }
+
+// memo：activities 引用未变（历史条目跨帧复用）时跳过，流式期间不再逐帧重渲染工具组
+export default memo(CollapsedToolGroup);

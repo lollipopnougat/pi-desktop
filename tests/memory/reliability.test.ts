@@ -499,10 +499,13 @@ describe('检索与任务生命周期', () => {
       const bridge = {
         cwd: root,
         win: { webContents: { send: vi.fn() } },
-        getSession: () => ({ model: { provider: 'test', id: 'test' } }),
         modelRuntime: { completeSimple: vi.fn() }
       };
-      const controller = new MemoryController(bridge as never);
+      const controller = new MemoryController(bridge as never, {
+        current: () => ({ model: { provider: 'test', id: 'test' } }),
+        cwd: () => bridge.cwd,
+        sendSessionEvent: () => true
+      });
       seed(controller.getProjectId());
       let finish!: (value: unknown) => void;
       bridge.modelRuntime.completeSimple.mockImplementation(
@@ -538,7 +541,6 @@ describe('检索与任务生命周期', () => {
     expect(cfg.consolidateThreshold).toBe(5);
     const bridge = {
       cwd: root,
-      getSession: () => ({ model: {} }),
       modelRuntime: {
         completeSimple: async () => ({
           stopReason: 'length',
@@ -546,7 +548,11 @@ describe('检索与任务生命周期', () => {
         })
       }
     };
-    const controller = new MemoryController(bridge as never);
+    const controller = new MemoryController(bridge as never, {
+      current: () => ({ model: {} }),
+      cwd: () => bridge.cwd,
+      sendSessionEvent: () => true
+    });
     await expect(controller.makeCompleteFn()('system', 'user')).rejects.toThrow('LLM');
     expect(readPersisted('state.json')).toBe('');
   });

@@ -1,7 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { usePiStore } from '../store/pi-store';
+import { useShallow } from 'zustand/react/shallow';
 import { TokenRateTracker } from '../utils/token-rate';
 import { t } from '../i18n/zh';
+// 流式消息走独立订阅通道：写 store 会让所有订阅者跟着逐 token 重渲染
+import { setStreamingMessage } from '../lib/streaming-message';
 
 import { messageKey, mergeSessionMessages } from '../utils/session-messages';
 import { isCurrentSession } from './loadSession';
@@ -11,17 +14,28 @@ import { isCurrentSession } from './loadSession';
  * Mount this once at the app root.
  */
 export function usePiEventSubscription() {
+  // 只读 action（引用稳定），useShallow 让这个根级订阅永不因子状态变化而重渲染
   const {
     setStreaming,
     setCompacting,
     setRetry,
     setQueue,
     setMessages,
-    setStreamingMessage,
     setThinkingLevel,
     updateToolExecution,
     setGoalSnapshot
-  } = usePiStore();
+  } = usePiStore(
+    useShallow((s) => ({
+      setStreaming: s.setStreaming,
+      setCompacting: s.setCompacting,
+      setRetry: s.setRetry,
+      setQueue: s.setQueue,
+      setMessages: s.setMessages,
+      setThinkingLevel: s.setThinkingLevel,
+      updateToolExecution: s.updateToolExecution,
+      setGoalSnapshot: s.setGoalSnapshot
+    }))
+  );
 
   // 流式输出速率追踪：message_start 重置，message_update 喂入，结束时清零。
   // 放 ref 而非 store：tracker 是可变类实例，且只服务事件层。
@@ -132,14 +146,19 @@ export function usePiEventSubscription() {
               return; // 隐藏续跑消息
             }
             const cur = usePiStore.getState().messages;
+            const wasEmpty = cur.length === 0;
             // 去重：用复合键（见 messageKey）
             if (!cur.some((m: any) => messageKey(m) === messageKey(userMsg))) {
               setMessages([...cur, userMsg]);
             }
-            // 新会话首条消息：SDK 有「无 assistant 不写盘」保护，首条 user 消息在
-            // assistant 回复前不会落盘，listSessions 扫盘读不到，侧栏/标题区拿不到
-            // firstMessage。这里用首条用户消息文本前缀立即设置 sessionLabel，让聊天
-            // 区标题即时回显（侧栏会话项仍需等落盘后出现）。
+            // 本会话第一条消息：立刻刷新会话列表。
+            // SDK 的落盘时机是「每条 message_end 各写一行」，首条 user 消息就会创建
+            // 会话文件（实测：SessionManager.create 后文件不存在，appendMessage(user)
+            // 后立刻出现 header+消息共 2 行）；而会话列表只在扫盘/agent_end 时更新，
+            // 所以不在这里刷一次的话，首轮跑完之前侧栏看不到这一行。
+            if (wasEmpty) usePiStore.getState().bumpSessionVersion();
+            // 新会话首条消息：用它的文本前缀立即设置 sessionLabel，聊天区标题即时回显
+            // （侧栏那一行则由上面的列表刷新补上，标题取扫描到的 firstMessage）。
             const store = usePiStore.getState();
             if (!store.sessionLabel) {
               // 纯图片消息（text 为空但有 image block）用占位标题
@@ -271,12 +290,23 @@ export function usePiEventSubscription() {
       .then((snapshot) => usePiStore.getState().setBackgroundTaskSnapshot(snapshot))
       .catch(() => {});
 
+    // 会话槽状态（多会话后台运行）：侧栏徽标「在跑/未读/等待审批」。
+    // 与聊天内容无关，所以不过 isCurrentSession 过滤（列表里所有会话都要看得到）。
+    const unsubSlots = window.pi.onSessionSlots((payload) => {
+      usePiStore.getState().setSessionSlots(payload.slots);
+    });
+    void window.pi
+      .getSessionSlots()
+      .then((payload) => usePiStore.getState().setSessionSlots(payload.slots))
+      .catch(() => {});
+
     return () => {
       unsubscribe();
       unsubGoal();
       unsubPlan();
       unsubSubagent();
       unsubBackgroundTasks();
+      unsubSlots();
     };
   }, []);
 }

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import fs from 'fs';
 
-const { tmpDir, handlers, uiSettings } = vi.hoisted(() => {
+const { tmpDir, handlers, uiSettings, shellMock } = vi.hoisted(() => {
   const { join } = require('path') as typeof import('path');
   const { tmpdir } = require('os') as typeof import('os');
   const dir = join(
@@ -11,7 +11,8 @@ const { tmpDir, handlers, uiSettings } = vi.hoisted(() => {
   return {
     tmpDir: dir,
     handlers: new Map<string, (event: unknown, ...args: any[]) => any>(),
-    uiSettings: { value: {} as Record<string, unknown> }
+    uiSettings: { value: {} as Record<string, unknown> },
+    shellMock: { openPath: vi.fn(async () => '') }
   };
 });
 
@@ -20,7 +21,8 @@ vi.mock('electron', () => ({
     handle(channel: string, fn: (event: unknown, ...args: any[]) => any) {
       handlers.set(channel, fn);
     }
-  }
+  },
+  shell: shellMock
 }));
 
 vi.mock('../../electron/config-dir', () => ({ DESKTOP_AGENT_DIR: tmpDir }));
@@ -38,6 +40,7 @@ import {
   DEFAULT_LOG_CONFIG,
   getLogFilePath,
   getLogsDir,
+  listLogFiles,
   logEvent,
   resetLogStateForTest,
   setLogConfig
@@ -66,11 +69,13 @@ describe('ipc/logs', () => {
     registerLogsIpc();
   });
 
-  it('注册 5 个通道', () => {
+  it('注册 7 个通道', () => {
     expect([...handlers.keys()].sort()).toEqual([
       'pi:clearLogs',
+      'pi:deleteLogFile',
       'pi:getLogConfig',
       'pi:listLogFiles',
+      'pi:openLogFile',
       'pi:readLogTail',
       'pi:setLogConfig'
     ]);
@@ -185,6 +190,42 @@ describe('ipc/logs', () => {
     expect(capped.lines).toHaveLength(500);
     const floored = await call('pi:readLogTail', 'model', 0);
     expect(floored.lines).toHaveLength(1);
+  });
+
+  it('pi:openLogFile 用系统默认程序打开目录内的日志文件', async () => {
+    logEvent('model', { phase: 'a' });
+    const name = listLogFiles()[0].name;
+    shellMock.openPath.mockClear();
+
+    expect(await call('pi:openLogFile', name)).toEqual({ ok: true });
+    expect(shellMock.openPath).toHaveBeenCalledWith(getLogFilePath('model'));
+  });
+
+  it('pi:openLogFile 拒绝越界名字与不存在的文件', async () => {
+    shellMock.openPath.mockClear();
+    expect(await call('pi:openLogFile', '../ui-config.json')).toEqual({
+      ok: false,
+      error: 'log file not found'
+    });
+    expect(await call('pi:openLogFile', 'model-2000-01-01.log')).toEqual({
+      ok: false,
+      error: 'log file not found'
+    });
+    expect(shellMock.openPath).not.toHaveBeenCalled();
+  });
+
+  it('pi:deleteLogFile 只删指定文件', async () => {
+    logEvent('model', { phase: 'a' });
+    logEvent('tools', { phase: 'b' });
+    const modelName = listLogFiles().find((f) => f.channel === 'model')?.name ?? '';
+    const toolsName = listLogFiles().find((f) => f.channel === 'tools')?.name ?? '';
+
+    expect(await call('pi:deleteLogFile', modelName)).toEqual({ ok: true });
+    expect((await call('pi:listLogFiles')).files.map((f: any) => f.name)).toEqual([toolsName]);
+    expect(await call('pi:deleteLogFile', '../ui-config.json')).toEqual({
+      ok: false,
+      error: 'log file not found'
+    });
   });
 
   it('pi:clearLogs 删除全部日志文件并返回数量', async () => {

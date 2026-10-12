@@ -29,6 +29,7 @@
  */
 import { randomUUID } from 'crypto';
 import type { PiBridge } from '../pi-bridge';
+import type { SessionHost } from '../session-slot';
 import {
   DEFAULT_PERMISSION_POLICY,
   checkDangerousToolCall,
@@ -80,6 +81,8 @@ export type PermissionResponseValue = PermissionDecision | 'allow-session';
 
 interface PendingRequest {
   resolve: (decision: PermissionDecision) => void;
+  /** 推给渲染进程的请求原文：切回本会话时用它重推（replayPending） */
+  request: PermissionRequest;
   /** 挂起请求对应的工具名（allow-session 决策时用于登记会话级放行） */
   toolName: string;
   /** 由请求产生时的策略决定，模型审批只接受单次许可 */
@@ -103,6 +106,11 @@ interface BeforeToolCallResult {
 
 export class PermissionController {
   private piBridge: PiBridge;
+  /**
+   * 会话访问面：控制器按会话槽创建，所以审批/分类必须看「自己这一槽」的 session 与 cwd。
+   * （旧实现读 piBridge.session / piBridge.cwd = 焦点会话，多会话下会拿错项目边界）
+   */
+  private host: SessionHost;
   private policy: PermissionPolicy = DEFAULT_PERMISSION_POLICY;
   /** auto-safe 自定义白名单（设置页配置，立即生效） */
   private autoSafeConfig: AutoSafeConfig = {};
@@ -115,12 +123,18 @@ export class PermissionController {
   /** 已包装过的 agent 实例（防重复包装） */
   private wrappedAgents = new WeakSet<object>();
 
-  constructor(piBridge: PiBridge) {
+  constructor(piBridge: PiBridge, host: SessionHost) {
     this.piBridge = piBridge;
+    this.host = host;
   }
 
   getPolicy(): PermissionPolicy {
     return this.policy;
+  }
+
+  /** 挂起审批数（侧栏「等待审批」徽标用；不暴露具体请求） */
+  pendingCount(): number {
+    return this.pending.size;
   }
 
   /** 设置策略（立即生效，含流式中的下一次工具调用） */
@@ -186,7 +200,7 @@ export class PermissionController {
     // 工具描述：SDK 的 ToolDefinition.description（模型据此理解工具是干什么的）
     let toolDescription: string | undefined;
     try {
-      const session = this.piBridge.session as {
+      const session = this.host.current() as {
         getToolDefinition?: (name: string) => { description?: string } | undefined;
       } | null;
       toolDescription = session?.getToolDefinition?.(toolName)?.description;
@@ -196,7 +210,7 @@ export class PermissionController {
     return classifyToolCall({
       runtime: this.piBridge.modelRuntime as ClassifierRuntime | null,
       config: this.classifierConfig,
-      state: buildApprovalState({ toolName, toolDescription, args: input, cwd: this.piBridge.cwd }),
+      state: buildApprovalState({ toolName, toolDescription, args: input, cwd: this.host.cwd() }),
       signal
     });
   }
@@ -268,7 +282,7 @@ export class PermissionController {
         // 开关关闭时行为不变；开启时也只在 isSafeWriteInCwd 认可的范围（项目内、非敏感目录）内生效。
         if (
           this.classifierConfig.allowWriteInCwd &&
-          isSafeWriteInCwd(toolName, input, this.piBridge.cwd)
+          isSafeWriteInCwd(toolName, input, this.host.cwd())
         ) {
           logGate('allow', 'classifier-write-in-cwd');
           return undefined;
@@ -304,7 +318,7 @@ export class PermissionController {
           return undefined;
         } else if (
           policy === 'auto-safe' &&
-          isSafeToolCall(toolName, input, this.autoSafeConfig, this.piBridge.cwd)
+          isSafeToolCall(toolName, input, this.autoSafeConfig, this.host.cwd())
         ) {
           logGate('allow', 'static-whitelist');
           return undefined;
@@ -363,7 +377,12 @@ export class PermissionController {
         signal?.removeEventListener('abort', onAbort);
       };
 
-      this.pending.set(id, { resolve: settle, toolName, allowSession: classifier === undefined });
+      this.pending.set(id, {
+        resolve: settle,
+        toolName,
+        allowSession: classifier === undefined,
+        request
+      });
       logPermissionEvent({
         phase: 'request',
         id,
@@ -394,7 +413,10 @@ export class PermissionController {
         settle('deny');
         return;
       }
-      if (!this.piBridge.sendSessionEvent('pi:permissionRequest', request)) settle('deny');
+      // 走本槽的 host 推送：事件带本槽身份，渲染端按「焦点会话」过滤——后台槽的审批不会
+      // 顶掉焦点会话的面板（侧栏 pendingApprovals 会亮），用户切过去时由 replayPending 重推。
+      // 回传决策按请求 id 找回本槽（PiBridge.resolvePermissionRequest）。
+      if (!this.host.sendSessionEvent('pi:permissionRequest', request)) settle('deny');
       // 挂起直至 pi:permissionResponse 或 abort
     });
   }
@@ -436,6 +458,21 @@ export class PermissionController {
   /** 清空会话级放行（恢复逐次审批） */
   clearSessionAllowedTools(): void {
     this.sessionAllowedTools.clear();
+  }
+
+  /** 首个挂起的审批请求原文（渲染端刷新会话状态后主动拉取面板用） */
+  firstPendingRequest(): PermissionRequest | null {
+    for (const pending of this.pending.values()) {
+      return pending.request;
+    }
+    return null;
+  }
+
+  /** 切回本会话时把挂起的审批重新推给渲染进程（后台期间的推送被渲染端按会话过滤丢掉） */
+  replayPending(): void {
+    for (const pending of this.pending.values()) {
+      this.host.sendSessionEvent('pi:permissionRequest', pending.request);
+    }
   }
 
   /** 会话切换/关闭时清空挂起请求与「本次会话允许」状态（挂起请求全部按拒绝结算） */

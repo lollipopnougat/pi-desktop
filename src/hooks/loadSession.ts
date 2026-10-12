@@ -75,6 +75,15 @@ async function refreshSession(version: number, label?: string): Promise<void> {
       }),
       window.pi.getTodoPhases().then((result) => {
         if (current()) usePiStore.getState().setTodoPhases(result?.phases ?? []);
+      }),
+      // 挂起交互（后台期间的提问/审批）用拉取而不是等推送：切换过程中的推送会被
+      // isCurrentSession 过滤丢掉，切过去后必须主动补一次面板
+      window.pi.getPendingInteractions().then((pending) => {
+        if (!current()) return;
+        usePiStore
+          .getState()
+          .setAskQuestions(pending?.ask?.questions ?? null, pending?.ask?.sessionId ?? null);
+        usePiStore.getState().setPendingPermissionRequest(pending?.permission ?? null);
       })
     ].map((promise) =>
       promise.catch((error) => console.error('Failed to refresh session data:', error))

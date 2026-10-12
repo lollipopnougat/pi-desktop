@@ -49,7 +49,8 @@ export function useEventBindings() {
   useEffect(() => {
     return window.pi.onAskUser((questions, identity) => {
       if (!isCurrentSession(identity)) return;
-      setAskQuestions(questions);
+      // 带上提问所属会话：多会话下答案必须回到发起提问的那个会话
+      setAskQuestions(questions, identity.sessionId);
       const first = questions?.[0];
       const body =
         first?.question ||

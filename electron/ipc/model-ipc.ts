@@ -58,9 +58,10 @@ export function registerModelIpc(ctx: PiBridgeContext & { modelRuntime: any }) {
     if (!model) {
       throw new Error(`Model not found: ${provider}/${modelId}`);
     }
-    const session = ctx.getSession();
+    const slot = ctx.sessionFor();
+    const session = slot.requireSession();
     await session.setModel(model);
-    if (ctx.getSession() !== session) throw new Error('SESSION_CHANGED');
+    if (slot.session !== session) throw new Error('SESSION_CHANGED');
     // 模型切换后同步 read_img 工具可见性（新模型支持视觉则移除，不支持且已配置则注入）
     try {
       (ctx as any).syncReadImgTool?.();
@@ -74,7 +75,7 @@ export function registerModelIpc(ctx: PiBridgeContext & { modelRuntime: any }) {
       const modelCfg = configured?.models?.find((m: any) => m.id === modelId);
       const defaultLevel = modelCfg?.defaultThinkingLevel;
       if (typeof defaultLevel === 'string' && defaultLevel) {
-        if (ctx.getSession() !== session) throw new Error('SESSION_CHANGED');
+        if (slot.session !== session) throw new Error('SESSION_CHANGED');
         session.setThinkingLevel(defaultLevel);
       }
     } catch {
@@ -88,7 +89,7 @@ export function registerModelIpc(ctx: PiBridgeContext & { modelRuntime: any }) {
 
   ipcMain.handle('pi:cycleModel', async () => {
     // 与 pi:setModel 保持一致：切换后同步 read_img 可见性（模型是否支持视觉会变）
-    const result = await ctx.getSession().cycleModel();
+    const result = await ctx.sessionFor().requireSession().cycleModel();
     try {
       (ctx as any).syncReadImgTool?.();
     } catch {}
@@ -96,17 +97,17 @@ export function registerModelIpc(ctx: PiBridgeContext & { modelRuntime: any }) {
   });
 
   ipcMain.handle('pi:setThinkingLevel', async (_e, level: string) => {
-    ctx.getSession().setThinkingLevel(level);
+    ctx.sessionFor().requireSession().setThinkingLevel(level);
   });
 
   ipcMain.handle('pi:cycleThinkingLevel', async () => {
-    return ctx.getSession().cycleThinkingLevel();
+    return ctx.sessionFor().requireSession().cycleThinkingLevel();
   });
 
   ipcMain.handle('pi:getThinkingLevels', async () => {
     // 用 SDK 的 getAvailableThinkingLevels：按当前模型 thinkingLevelMap 过滤掉
     // 不支持的等级（如 deepseek 只支持 off/high/max，点 low 会被 clamp 回 high）
-    const session = ctx.getSession();
+    const session = ctx.sessionFor().requireSession();
     const levels = session.getAvailableThinkingLevels?.();
     if (Array.isArray(levels) && levels.length > 0) return levels;
     // 兜底：SDK 方法不可用时退回原逻辑
@@ -176,7 +177,7 @@ export function registerModelIpc(ctx: PiBridgeContext & { modelRuntime: any }) {
         }
         writeDefaultModel(next);
         // 让 SDK 的 SettingsManager 立即读到新值（新建会话按新默认值选模型）
-        const sm = ctx.getSession()?.settingsManager ?? ctx.runtime?.settingsManager;
+        const sm = ctx.sessionFor().session?.settingsManager ?? ctx.runtime?.settingsManager;
         await sm?.reload?.().catch?.(() => {});
         return { ok: true, config: next };
       } catch (err) {

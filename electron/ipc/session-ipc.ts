@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { SessionManager } from '@earendil-works/pi-coding-agent';
+import type { SessionInfo } from '@earendil-works/pi-coding-agent';
 import type { PiBridgeContext } from './types';
 import { getSessionDir, removeProjectSessions } from '../provider-config';
 import {
@@ -10,6 +11,7 @@ import {
   deleteSubagentSessionsForProject
 } from '../subagents/session-file';
 import { t } from '../../src/i18n/zh';
+import { exportFromFile } from '../sdk-export-html';
 
 function assertSwitched(result: { cancelled: boolean }): void {
   if (result.cancelled) throw new Error(t.sessionSwitchCancelled);
@@ -23,22 +25,53 @@ const genId = () => Date.now().toString(36) + Math.random().toString(36).slice(2
  * duplicateSession / renameSession / exportSession(Jsonl|Html) / deleteSession / listSessions
  */
 export function registerSessionIpc(ctx: PiBridgeContext) {
+  // === 会话列表扫描缓存 ===
+  // 扫描成本不低：SDK 的 buildSessionInfo 逐行读完整会话文件（无 mtime 跳过、无缓存），
+  // 而 agent_end 时侧栏 / 聊天标题 / 会话树会同时拉一次列表。这里用「短 TTL 缓存 + 并发合并」
+  // 把同一批请求折叠成一次扫描；改动了列表内容的操作主动失效（见下方 invalidateSessionList）。
+  const LIST_CACHE_MS = 1500;
+  let listCache: { at: number; cwd: string; current: SessionInfo[]; all: SessionInfo[] } | null =
+    null;
+  let listInFlight: Promise<{ current: SessionInfo[]; all: SessionInfo[] }> | null = null;
+  /**
+   * 列表代次：改动了列表内容的操作（删除/重命名/复制/移除项目…）会让它 +1。
+   * 扫描要读整个会话目录，如果在扫描进行中发生了改动，那份结果就是过期的——
+   * 既不能写进缓存，也不能返回给调用方（「删除当前会话后列表仍显示已删会话」就是这个竞态）。
+   */
+  let listGeneration = 0;
+  const invalidateSessionList = (): void => {
+    listCache = null;
+    listGeneration += 1;
+    // 丢弃在飞的扫描：新调用者必须基于当前目录重新扫描
+    listInFlight = null;
+  };
+  const scanSessionList = async (): Promise<{ current: SessionInfo[]; all: SessionInfo[] }> => {
+    // list 传当前 cwd 的编码目录；listAll 不传参，走 SDK 默认 getSessionsDir()
+    // （已被 PI_CODING_AGENT_DIR 重定向到 ~/.pi-desktop/sessions，SDK 会递归扫描所有子目录）
+    const cwd = ctx.cwd;
+    const sessions = await SessionManager.list(cwd, getSessionDir(cwd));
+    const allSessions = await SessionManager.listAll();
+    return { current: sessions, all: allSessions };
+  };
+  /** 发起一次扫描并登记为「在飞」；同一时刻只保留一个，避免并发拉列表时重复扫盘 */
+  const startScanSessionList = (): Promise<{ current: SessionInfo[]; all: SessionInfo[] }> => {
+    const promise = scanSessionList();
+    listInFlight = promise;
+    void promise.finally(() => {
+      if (listInFlight === promise) listInFlight = null;
+    });
+    return promise;
+  };
+
   // === 会话切换/分支 ===
+  // 新建会话：旧会话留在后台继续跑（不中止、不销毁），新会话进新槽成为焦点
   ipcMain.handle('pi:newSession', (_e, cwd?: string) =>
-    ctx.runSessionOperation(async () => {
-      if (cwd && path.resolve(cwd) !== path.resolve(ctx.cwd)) {
-        await ctx.createRuntimeFor(cwd);
-      } else {
-        assertSwitched(await ctx.runtime.newSession());
-      }
-    })
+    ctx.runFocusOperation(() => ctx.newSessionInSlot(cwd))
   );
 
-  // SDK 按会话文件的 cwd 创建 services；跨项目切换只需这一个原子操作。
+  // 切换会话：已打开的会话（可能在后台跑着）直接复用槽，只切焦点；跨项目按会话文件 cwd 处理。
   ipcMain.handle('pi:switchSession', (_e, sessionPath: string) =>
-    ctx.runSessionOperation(async () => {
-      assertSwitched(await ctx.runtime.switchSession(sessionPath));
-    })
+    ctx.runFocusOperation(() => ctx.openSessionInSlot(sessionPath))
   );
 
   ipcMain.handle('pi:fork', (_e, entryId: string, pos?: string) =>
@@ -50,7 +83,7 @@ export function registerSessionIpc(ctx: PiBridgeContext) {
   // 按消息 timestamp fork：遍历 session entries 找匹配的 message entry
   ipcMain.handle('pi:forkByTimestamp', (_e, timestamp: number, pos?: string) =>
     ctx.runSessionOperation(async () => {
-      const sf = ctx.getSession().sessionFile;
+      const sf = ctx.sessionFor().requireSession().sessionFile;
       if (!sf) throw new Error('no session file');
       const sm = SessionManager.open(sf);
       const entries = sm.getEntries?.() ?? [];
@@ -99,6 +132,7 @@ export function registerSessionIpc(ctx: PiBridgeContext) {
       } catch {}
     }
     fs.writeFileSync(dst, lines.join('\n') + '\n', 'utf-8');
+    invalidateSessionList();
     return { ok: true, newSessionPath: dst };
   });
 
@@ -127,6 +161,7 @@ export function registerSessionIpc(ctx: PiBridgeContext) {
       name: sanitizedName
     };
     fs.appendFileSync(p, JSON.stringify(entry) + '\n', 'utf-8');
+    invalidateSessionList();
     return { ok: true };
   });
 
@@ -138,45 +173,48 @@ export function registerSessionIpc(ctx: PiBridgeContext) {
     return { ok: true, filePath: outputPath };
   });
 
-  // 导出会话为 HTML：需 runtime，先切换到目标会话再导出
-  ipcMain.handle('pi:exportSessionHtml', (_e, sessionPath: string, outputPath: string) =>
-    ctx.runSessionOperation(async () => {
-      const curFile = ctx.getSession().sessionFile;
-      const curCwd = ctx.cwd;
-      const curManager = ctx.getSession().sessionManager;
-      const switched = curFile !== sessionPath;
-      let moved = false;
-      try {
-        if (switched) {
-          assertSwitched(await ctx.runtime.switchSession(sessionPath));
-          moved = true;
-          await ctx.syncSession();
-        }
-        const out = await ctx.getSession().exportToHtml(outputPath);
-        return { ok: true, filePath: out };
-      } finally {
-        if (moved) {
-          if (curFile && fs.existsSync(curFile)) {
-            assertSwitched(await ctx.runtime.switchSession(curFile));
-          } else {
-            await ctx.createRuntimeFor(curCwd, curManager);
-          }
-        }
-      }
-    })
-  );
+  // 导出会话为 HTML，两条路径都是「免切换」（不中止当前轮、不重载会话状态）：
+  // ① 目标会话已在槽里（含后台槽）→ 用该槽的 session 导出，带完整 state（systemPrompt / tools 附录）；
+  // ② 目标只是磁盘上没加载过的旧会话文件 → 用 SDK 的 exportFromFile 直接读文件导出。
+  //    代价是这类导出页没有 systemPrompt/tools 附录（state 为空，SDK 的独立导出路径就是这么设计的）。
+  ipcMain.handle('pi:exportSessionHtml', async (_e, sessionPath: string, outputPath: string) => {
+    const inSlot = ctx.findSessionSlot(sessionPath);
+    if (inSlot?.session) {
+      // read() 排在该槽的会话替换之后：导出期间不会撞上「这个槽正被替换」
+      return inSlot.access.read(async () => {
+        const session = inSlot.session;
+        if (!session) throw new Error('SESSION_CHANGED');
+        return { ok: true, filePath: await session.exportToHtml(outputPath) };
+      });
+    }
+    const target = path.resolve(sessionPath);
+    if (!fs.existsSync(target)) throw new Error('session file not found');
+    // 主题跟随焦点会话（拿不到就用 SDK 默认主题）
+    let themeName: string | undefined;
+    try {
+      themeName = ctx.sessionFor().session?.settingsManager?.getTheme?.() ?? undefined;
+    } catch {
+      themeName = undefined;
+    }
+    return { ok: true, filePath: await exportFromFile(target, { outputPath, themeName }) };
+  });
 
-  // 删除会话：直接删文件，拒绝删除当前激活会话
+  // 删除会话：拒绝删除当前激活会话与后台运行中的会话，删完顺带释放还持有它的空闲槽
   ipcMain.handle('pi:deleteSession', async (_e, sessionPath: string) => {
     const p = path.resolve(sessionPath);
-    const curFile = ctx.getSession().sessionFile;
-    if (curFile && path.resolve(curFile) === p) {
+    // 该会话可能还活在某个槽里（前台或后台）：先处理，否则删完文件列表里还会留一行「未命名会话」
+    const dropped = await ctx.dropSessionSlot(sessionPath);
+    if (dropped === 'focused') {
       throw new Error('无法删除当前激活的会话，请先切换到其他会话');
+    }
+    if (dropped === 'busy') {
+      throw new Error('该会话正在后台运行，无法删除，请先停止它');
     }
     if (!fs.existsSync(p)) throw new Error('session file not found');
     fs.unlinkSync(p);
     // 主会话被删后其 run 记录一并消失,子 agent 会话文件失去引用 → 同步清理
     deleteSubagentSessionsForParent(p);
+    invalidateSessionList();
     return { ok: true };
   });
 
@@ -185,25 +223,51 @@ export function registerSessionIpc(ctx: PiBridgeContext) {
       // 先清子 agent 会话(否则主会话目录没了就无从定位),再删主会话目录
       deleteSubagentSessionsForProject(getSessionDir(cwd));
       removeProjectSessions(cwd);
+      invalidateSessionList();
       return { ok: true };
     } catch (e: any) {
       throw new Error(`移除项目失败: ${e?.message ?? e}`);
     }
   });
 
+  // 会话槽状态（在跑/未读/等待审批）：渲染端订阅推送之外，挂载时主动拉一次
+  ipcMain.handle('pi:getSessionSlots', async () => ctx.sessionSlots());
+
   ipcMain.handle('pi:listSessions', async () => {
-    // list 传当前 cwd 的编码目录；listAll 不传参，走 SDK 默认 getSessionsDir()
-    // （已被 PI_CODING_AGENT_DIR 重定向到 ~/.pi-desktop/sessions，SDK 会递归扫描所有子目录）
-    const sessions = await SessionManager.list(ctx.cwd, getSessionDir(ctx.cwd));
-    const allSessions = await SessionManager.listAll();
-    return { current: sessions, all: allSessions };
+    const cwd = ctx.cwd;
+    const cached =
+      listCache && listCache.cwd === cwd && Date.now() - listCache.at < LIST_CACHE_MS
+        ? listCache
+        : null;
+    let scanned = cached;
+    if (!scanned) {
+      // 最多重扫一次：等在飞的扫描期间若列表被改动（删除/重命名/新建…），那份结果已过期
+      for (let attempt = 0; attempt < 2 && !scanned; attempt += 1) {
+        const generation = listGeneration;
+        const fresh = await (listInFlight ?? startScanSessionList());
+        if (generation === listGeneration) {
+          listCache = { at: Date.now(), cwd, current: fresh.current, all: fresh.all };
+          scanned = listCache;
+        }
+      }
+      // 仍在变动（极端情况）：本次返回刚扫到的结果，但不写缓存
+      if (!scanned) {
+        const fresh = await startScanSessionList();
+        scanned = { at: Date.now(), cwd, current: fresh.current, all: fresh.all };
+      }
+    }
+    // 补上「槽里已有、文件还没落盘」的新会话：新建会话第一轮结束前也要能在侧栏看到
+    return {
+      current: ctx.mergeSessionList(scanned.current, cwd),
+      all: ctx.mergeSessionList(scanned.all)
+    };
   });
 
   // === 会话树 ===
   // 只返回骨架节点（避免 tool result / thinking 等大文本塭 renderer）
   // 若节点被展开，renderer 额外调 pi:getSessionEntry 拿完整 entry
   ipcMain.handle('pi:getTree', async () => {
-    const sf = ctx.getSession().sessionFile;
+    const sf = ctx.sessionFor().requireSession().sessionFile;
     if (!sf) return null;
     const sm = SessionManager.open(sf);
     const tree = sm.getTree();
@@ -425,7 +489,7 @@ export function registerSessionIpc(ctx: PiBridgeContext) {
 
   // === 会话树节点详情（按需加载） ===
   ipcMain.handle('pi:getSessionEntry', async (_e, entryId: string) => {
-    const sf = ctx.getSession().sessionFile;
+    const sf = ctx.sessionFor().requireSession().sessionFile;
     if (!sf) return null;
     const sm = SessionManager.open(sf);
     const entries = sm.getEntries();
@@ -434,22 +498,24 @@ export function registerSessionIpc(ctx: PiBridgeContext) {
 
   ipcMain.handle('pi:navigateTree', (_e, id: string, summarize?: boolean) =>
     ctx.runSessionOperation(async () => {
-      await ctx.getSession().abort();
-      await ctx.getSession().navigateTree(id, summarize ? { summarize: true } : undefined);
+      const session = ctx.sessionFor().requireSession();
+      await session.abort();
+      await session.navigateTree(id, summarize ? { summarize: true } : undefined);
     })
   );
 
   ipcMain.handle('pi:setSessionName', async (_e, name: string) => {
-    const sf = ctx.getSession().sessionFile;
+    const sf = ctx.sessionFor().requireSession().sessionFile;
     if (sf) {
       const sm = SessionManager.open(sf);
       // @ts-expect-error - method may vary by SDK version
       sm.setSessionName?.(name);
+      invalidateSessionList();
     }
   });
 
   ipcMain.handle('pi:exportHtml', async (_e, outPath?: string) => {
-    const sf = ctx.getSession().sessionFile;
+    const sf = ctx.sessionFor().requireSession().sessionFile;
     if (!sf) return null;
     return { sessionFile: sf, outputPath: outPath };
   });
@@ -463,7 +529,7 @@ export function registerSessionIpc(ctx: PiBridgeContext) {
    */
   ipcMain.handle('pi:getTodoPhases', async () => {
     try {
-      const msgs = ctx.getSession().messages ?? [];
+      const msgs = ctx.sessionFor().requireSession().messages ?? [];
       for (let i = msgs.length - 1; i >= 0; i--) {
         const m: any = msgs[i];
         if (

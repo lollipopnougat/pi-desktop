@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { usePiStore } from './store/pi-store';
+import { useShallow } from 'zustand/react/shallow';
 import { applyTheme, onSystemColorChange } from './theme/applyTheme';
 import { usePiEventSubscription } from './hooks/usePiEvent';
 import { useMonacoSetup } from './hooks/useMonaco';
@@ -31,6 +32,7 @@ import { t } from './i18n/zh';
 export default function App() {
   usePiEventSubscription();
   useMonacoSetup();
+  // useShallow：逐字段比较，流式/工具执行等无关字段变化不再重渲染整个 App 树
   const {
     settingsOpen,
     isCompacting,
@@ -55,7 +57,31 @@ export default function App() {
     setRightPanelOpen,
     setTodoPanelOpen,
     setRightPanelWidth
-  } = usePiStore();
+  } = usePiStore(
+    useShallow((s) => ({
+      settingsOpen: s.settingsOpen,
+      isCompacting: s.isCompacting,
+      isSessionLoading: s.isSessionLoading,
+      retryInfo: s.retryInfo,
+      rightPanelOpen: s.rightPanelOpen,
+      rightPanelMaximized: s.rightPanelMaximized,
+      sidebarOpen: s.sidebarOpen,
+      terminalPanelOpen: s.terminalPanelOpen,
+      treeViewOpen: s.treeViewOpen,
+      fontSize: s.fontSize,
+      rightPanelWidth: s.rightPanelWidth,
+      todoPanelOpen: s.todoPanelOpen,
+      uiFontFamily: s.uiFontFamily,
+      themeFamily: s.themeFamily,
+      colorMode: s.colorMode,
+      setSettingsOpen: s.setSettingsOpen,
+      setSidebarOpen: s.setSidebarOpen,
+      setTerminalPanelOpen: s.setTerminalPanelOpen,
+      setRightPanelOpen: s.setRightPanelOpen,
+      setTodoPanelOpen: s.setTodoPanelOpen,
+      setRightPanelWidth: s.setRightPanelWidth
+    }))
+  );
   const [initialized, setInitialized] = useState(false);
   const isMac = window.pi?.platform === 'darwin';
 

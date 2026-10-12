@@ -67,7 +67,11 @@ function completionContent(task: BackgroundTaskSnapshot): string {
 export class BackgroundTaskController {
   private readonly host: BackgroundTaskHost;
   private readonly registry: BackgroundTaskRegistry;
-  private binding: SessionBinding | null = null;
+  /**
+   * 每个会话槽一份绑定（key = 扩展持有的 token）：后台任务完成时按任务所属会话回灌，
+   * 多会话下不会把 A 会话的任务通知发到 B 会话（旧实现是单槽，后者会顶掉前者）。
+   */
+  private readonly bindings = new Map<object, SessionBinding>();
 
   constructor(host: BackgroundTaskHost) {
     this.host = host;
@@ -87,12 +91,12 @@ export class BackgroundTaskController {
     owner: BackgroundTaskOwner,
     sendMessage: SessionBinding['sendMessage']
   ): void {
-    this.binding = { token, ...owner, sendMessage };
+    this.bindings.set(token, { token, ...owner, sendMessage });
     this.emitUpdate(this.registry.list());
   }
 
   unbindSession(token: object): void {
-    if (this.binding?.token === token) this.binding = null;
+    this.bindings.delete(token);
   }
 
   start(
@@ -123,7 +127,7 @@ export class BackgroundTaskController {
   }
 
   async dispose(): Promise<void> {
-    this.binding = null;
+    this.bindings.clear();
     await this.registry.dispose();
   }
 
@@ -147,10 +151,11 @@ export class BackgroundTaskController {
       t.backgroundTasks.notificationBody(task.name, task.status)
     );
 
-    const binding = this.binding;
-    if (!binding || binding.sessionId !== task.sessionId || binding.cwd !== task.cwd) {
-      return;
-    }
+    // 回灌到「任务所属」的会话（按 sessionId + cwd 匹配；会话已关就只留系统通知）
+    const binding = [...this.bindings.values()].find(
+      (candidate) => candidate.sessionId === task.sessionId && candidate.cwd === task.cwd
+    );
+    if (!binding) return;
 
     binding.sendMessage(
       {

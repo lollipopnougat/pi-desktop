@@ -18,6 +18,7 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import path from 'path';
 import type { PiBridge } from '../pi-bridge';
+import type { SessionHost } from '../session-slot';
 import type {
   AgentDefinition,
   ChildRun,
@@ -60,14 +61,17 @@ export { newRunId };
 export class SubagentExecutor {
   private piBridge: PiBridge;
   private controller: SubagentController;
+  /** 所服务的父会话（Stage 0 = 焦点槽；多会话阶段按槽注入） */
+  private host: SessionHost;
   /** 活跃子 session(run id → session),用于 stop/steer */
   private activeSessions = new Map<string, AgentSession>();
   /** submit resolver(run id → resolve) */
   private submitResolvers = new Map<string, (p: SubmitPayload) => void>();
 
-  constructor(piBridge: PiBridge, controller: SubagentController) {
+  constructor(piBridge: PiBridge, controller: SubagentController, host: SessionHost) {
     this.piBridge = piBridge;
     this.controller = controller;
+    this.host = host;
   }
 
   get builtinAgentsDir(): string {
@@ -95,7 +99,7 @@ export class SubagentExecutor {
     });
 
     // 父会话当前模型(继承缺省)
-    const parentModel = this.piBridge.getSession()?.model;
+    const parentModel = this.host.current()?.model;
     const modelRef = opts.modelOverride ?? definition.model;
     let model: typeof parentModel | undefined;
     if (modelRef) {
@@ -138,7 +142,7 @@ export class SubagentExecutor {
 
     let session: AgentSession;
     try {
-      const cwd = this.piBridge.cwd;
+      const cwd = this.host.cwd();
       const agentDir = this.piBridge.agentDir;
       const services = await createAgentSessionServices({
         cwd,
@@ -159,7 +163,7 @@ export class SubagentExecutor {
       let sessionManager: SessionManager;
       try {
         sessionManager = SessionManager.create(cwd, ensureSubagentSessionDir(), {
-          parentSession: this.piBridge.getSession()?.sessionFile
+          parentSession: this.host.current()?.sessionFile
         });
         run.sessionFile = sessionManager.getSessionFile();
       } catch {

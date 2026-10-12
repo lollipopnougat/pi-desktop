@@ -1,5 +1,6 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { usePiStore, type AgentMode, type PermissionPolicy } from '../../store/pi-store';
+import { useShallow } from 'zustand/react/shallow';
 import ModelSelector from './ModelSelector';
 import ContextIndicator from './ContextIndicator';
 import AskUserPanel from './AskUserPanel';
@@ -20,8 +21,41 @@ function isSessionReady(): boolean {
   return !state.isSessionLoading && state.sessionRevision !== null;
 }
 
+/** 项目路径比较：忽略结尾斜杠；Windows 下路径大小写不敏感 */
+function sameProject(a: string | undefined, b: string | undefined): boolean {
+  if (!a || !b) return false;
+  const strip = (p: string) => p.replace(/[/\\]+$/, '');
+  const left = strip(a);
+  const right = strip(b);
+  const platform = typeof window !== 'undefined' ? window.pi?.platform : undefined;
+  return platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right;
+}
+
 export default function ChatInput() {
   const [text, setText] = useState('');
+  const sessionId = usePiStore((s) => s.sessionId);
+  const warnSameProjectBusy = usePiStore((s) => s.sameProjectBusyWarn);
+  // 同一项目里已经有别的会话在跑时的“提醒-放行”状态：
+  // busyKey 标识当前这一批在跑的其他会话；放行只对「本次会话访问」有效——
+  // 切走再切回来（sessionId 变化）要重新提醒，见下面的渲染期重置。
+  const busyKey = usePiStore((s) =>
+    s.sessionSlots
+      .filter(
+        (slot) => slot.running && slot.sessionId !== s.sessionId && sameProject(slot.cwd, s.cwd)
+      )
+      .map((slot) => slot.key)
+      .sort()
+      .join(',')
+  );
+  const [acknowledgedBusyKey, setAcknowledgedBusyKey] = useState<string | null>(null);
+  const [seenSessionId, setSeenSessionId] = useState(sessionId);
+  // 渲染期同步重置（React 官方的「props/state 变化时调整 state」写法）：避免用 effect 多跑一轮
+  if (seenSessionId !== sessionId) {
+    setSeenSessionId(sessionId);
+    setAcknowledgedBusyKey(null);
+  }
+  // useShallow：逐字段比较。过去全量订阅 store，流式期间每个 token 都会重渲染输入框，
+  // 打字明显发涩（见 ChatInput 的 send 逻辑依赖的多个字段都是低频变化）。
   const {
     isStreaming,
     isSessionLoading,
@@ -40,8 +74,32 @@ export default function ChatInput() {
     pendingChatInput,
     setPendingChatInput,
     planPendingProposal
-  } = usePiStore();
+  } = usePiStore(
+    useShallow((s) => ({
+      isStreaming: s.isStreaming,
+      isSessionLoading: s.isSessionLoading,
+      sessionRevision: s.sessionRevision,
+      queue: s.queue,
+      streamingSendMode: s.streamingSendMode,
+      mode: s.mode,
+      setMode: s.setMode,
+      commands: s.commands,
+      askQuestions: s.askQuestions,
+      goalSnapshot: s.goalSnapshot,
+      model: s.model,
+      availableModels: s.availableModels,
+      setRightPanelOpen: s.setRightPanelOpen,
+      setPendingFile: s.setPendingFile,
+      pendingChatInput: s.pendingChatInput,
+      setPendingChatInput: s.setPendingChatInput,
+      planPendingProposal: s.planPendingProposal
+    }))
+  );
   const hasMessages = usePiStore((s) => s.messages.length > 0);
+  // 本会话空闲、但同项目已有其他会话在跑：先拦一道，用户点“仍然继续”才放行。
+  // 本会话自己正在跑时不拦（那时输入框是用来引导/排队的，拦了反而妨碍）。
+  const busyBlocked =
+    warnSameProjectBusy && busyKey !== '' && !isStreaming && acknowledgedBusyKey !== busyKey;
   const [modeOpen, setModeOpen] = useState(false);
   const [permOpen, setPermOpen] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -365,6 +423,8 @@ export default function ChatInput() {
   const handleSend = useCallback(async () => {
     const raw = text.trim();
     if (!raw || usePiStore.getState().isStreaming || !isSessionReady()) return;
+    // 同项目其他会话在跑时的提醒蒙层未放行：不允许发送
+    if (busyBlocked) return;
     // 自动补全插入的 $skill:<name> 归一化为 SDK 识别的 /skill:<name>，
     // 否则 SDK 的 _expandSkillCommand 不会展开（只认 /skill: 开头）。
     const trimmed = raw.startsWith('$skill:') ? raw.replace(/^\$skill:/, '/skill:') : raw;
@@ -394,10 +454,14 @@ export default function ChatInput() {
       (!curGoal || curGoal.status === 'complete') &&
       !trimmed.startsWith('/')
     ) {
-      await window.pi.goal.create(trimmed);
+      const created = await window.pi.goal.create(trimmed);
+      if (created?.queued) {
+        usePiStore.getState().showToast(t.promptQueued, { variant: 'info' });
+      }
       return;
     }
 
+    let result: { queued: boolean } | undefined;
     try {
       // Send with images if any
       if (pendingImages.length > 0) {
@@ -407,14 +471,18 @@ export default function ChatInput() {
           mimeType: img.mediaType
         }));
         setPendingImages([]);
-        await window.pi.prompt(trimmed, { images });
+        result = await window.pi.prompt(trimmed, { images });
       } else {
-        await window.pi.prompt(trimmed);
+        result = await window.pi.prompt(trimmed);
+      }
+      // 并发上限（同时 3 个会话）：主进程已把这一轮排队，给用户一个明确提示
+      if (result?.queued) {
+        usePiStore.getState().showToast(t.promptQueued, { variant: 'info' });
       }
     } catch (e: any) {
       setSendError(e?.message || t.sendFailed);
     }
-  }, [text, pendingImages, availableModels]);
+  }, [text, pendingImages, availableModels, busyBlocked]);
 
   // Handle image paste
   const handlePaste = (e: React.ClipboardEvent) => {
@@ -649,7 +717,7 @@ export default function ChatInput() {
 
       {/* Input area - unified rounded container */}
       <div
-        className={`rounded-2xl border border-od-border-light bg-od-bg-alt transition-colors ${
+        className={`relative rounded-2xl border border-od-border-light bg-od-bg-alt transition-colors ${
           mode === 'plan'
             ? 'focus-within:border-od-purple/90'
             : mode === 'goal'
@@ -664,6 +732,7 @@ export default function ChatInput() {
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
+            readOnly={busyBlocked}
             placeholder={
               isStreaming
                 ? t.streamingHint(primarySendLabel, secondarySendLabel)
@@ -880,6 +949,25 @@ export default function ChatInput() {
             )}
           </div>
         </div>
+
+        {/* 同项目已有其他会话在跑：输入框上盖一层模糊蒙层，点“仍然继续”才放行 */}
+        {busyBlocked && (
+          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 rounded-2xl border border-od-border-light bg-od-bg-alt/70 px-4 text-center backdrop-blur-sm">
+            <div className="max-w-[420px] text-xs leading-relaxed text-od-text">
+              {t.sameProjectBusyNotice}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setAcknowledgedBusyKey(busyKey);
+                textareaRef.current?.focus();
+              }}
+              className="rounded-md border border-od-border-light bg-od-bg px-3 py-1 text-xs text-od-text-bright transition-colors hover:bg-od-bg-hover"
+            >
+              {t.sameProjectBusyContinue}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

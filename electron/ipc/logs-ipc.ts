@@ -9,18 +9,23 @@
  * - `pi:setLogConfig`      保存配置（先归一化，成功才落盘）
  * - `pi:listLogFiles`      列出日志文件（名称/大小/时间）
  * - `pi:readLogTail`       读某功能当天最后 n 行（设置页预览）
+ * - `pi:openLogFile`       用系统默认程序打开单个日志文件
+ * - `pi:deleteLogFile`     删除单个日志文件
  * - `pi:clearLogs`         删除所有日志文件
  */
-import { ipcMain } from 'electron';
+import { ipcMain, shell } from 'electron';
+import fs from 'fs';
 import { readUiSettingsForMain, writeUiSettingsForMain } from './settings-ipc';
 import {
   LOG_CHANNELS,
   clearLogs,
+  deleteLogFile,
   getLogConfig,
   getLogsDir,
   listLogFiles,
   normalizeLogConfig,
   readLogTail,
+  resolveLogFilePath,
   setLogConfig,
   type LogConfig
 } from '../logs/logger';
@@ -74,6 +79,30 @@ export function registerLogsIpc() {
         Number.isFinite(count) ? Math.min(MAX_PREVIEW_LINES, Math.max(1, Math.round(count))) : 200
       );
       return { ok: true, lines };
+    } catch (err) {
+      return { ok: false, error: String(err) };
+    }
+  });
+
+  // 用系统默认程序打开单个日志文件（设置页「打开」按钮）
+  ipcMain.handle('pi:openLogFile', async (_e, name: unknown) => {
+    try {
+      const full = typeof name === 'string' ? resolveLogFilePath(name) : null;
+      if (!full || !fs.existsSync(full)) return { ok: false, error: 'log file not found' };
+      // shell.openPath 返回空串表示成功，否则是错误描述
+      const err = await shell.openPath(full);
+      return err ? { ok: false, error: err } : { ok: true };
+    } catch (err) {
+      return { ok: false, error: String(err) };
+    }
+  });
+
+  ipcMain.handle('pi:deleteLogFile', async (_e, name: unknown) => {
+    try {
+      if (typeof name !== 'string' || !deleteLogFile(name)) {
+        return { ok: false, error: 'log file not found' };
+      }
+      return { ok: true };
     } catch (err) {
       return { ok: false, error: String(err) };
     }

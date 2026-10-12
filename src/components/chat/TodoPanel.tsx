@@ -47,7 +47,7 @@ interface TodoPanelProps {
 }
 
 export default function TodoPanel({ open, onClose }: TodoPanelProps) {
-  const { todoPhases } = usePiStore();
+  const todoPhases = usePiStore((s) => s.todoPhases);
   const isEmpty = todoPhases.length === 0;
 
   if (!open) return null;

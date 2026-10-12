@@ -69,7 +69,8 @@ export function registerPermissionIpc(ctx: PiBridge) {
       ) {
         return { ok: false, error: 'invalid payload' };
       }
-      const ok = ctx.permissionController.resolvePermission(id, decision);
+      // 按请求 id 回到所属槽的控制器：后台会话的审批不能落到焦点槽上
+      const ok = ctx.resolvePermissionRequest(id, decision);
       return { ok };
     }
   );

@@ -4,7 +4,7 @@ import Icon from '../common/Icon';
 import { t } from '../../i18n/zh';
 
 export default function CompactionToast() {
-  const { isCompacting } = usePiStore();
+  const isCompacting = usePiStore((s) => s.isCompacting);
   const [showToast, setShowToast] = useState(false);
   const [justFinished, setJustFinished] = useState(false);
 

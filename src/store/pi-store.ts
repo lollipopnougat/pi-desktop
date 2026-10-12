@@ -1,7 +1,14 @@
 import { create } from 'zustand';
 import { sameSession } from '../types/session';
-import type { BackgroundTaskSnapshotList, ClassifierApprovalVerdict } from '../types/pi';
+import type {
+  BackgroundTaskSnapshotList,
+  ClassifierApprovalVerdict,
+  SessionSlotSnapshot
+} from '../types/pi';
 import { applyTheme } from '../theme/applyTheme';
+// 流式消息不进 store：逐 token 写入会通知所有订阅者（见 lib/streaming-message.ts）
+import { setStreamingMessage } from '../lib/streaming-message';
+import { scheduleSessionRefresh } from '../lib/session-refresh';
 import { isExtendedMonacoThemeId, type ExtendedMonacoThemeId } from '../lib/monaco-themes';
 import {
   DEFAULT_COLOR_MODE,
@@ -251,7 +258,6 @@ export interface ToastItem {
 export interface PiState {
   // Messages
   messages: any[];
-  streamingMessage: any | null;
 
   // Toast（全局轻提示，自动消失，可手动关闭）
   toasts: ToastItem[];
@@ -285,6 +291,11 @@ export interface PiState {
   sessionLoadVersion: number;
   isSessionLoading: boolean;
   sessionFile: string | null;
+  /**
+   * 所有会话槽的状态投影（主进程 sessionSlots()）：侧栏据此显示「后台运行中/未读/等待审批」。
+   * 只含标量，不含聊天内容——后台槽不推消息（见 lib/streaming-message.ts 的按会话分键）。
+   */
+  sessionSlots: SessionSlotSnapshot[];
   cwd: string;
   sessionName: string | null;
   /** 当前会话标题文本（name 或 firstMessage 摘要），切换会话时由侧栏写入，避免标题区再扫盘 */
@@ -362,6 +373,8 @@ export interface PiState {
   showThinkingBlocks: boolean;
   /** 连续工具活动默认收起为摘要 */
   collapseToolCalls: boolean;
+  /** 同项目已有其他会话在跑时，输入框是否弹提醒蒙层 */
+  sameProjectBusyWarn: boolean;
   /** 模型回复期间发送消息的默认方式（Enter / 发送按钮），Alt+Enter 走另一种 */
   streamingSendMode: PendingSendMode;
   /** 通知总开关（false 一律不发） */
@@ -378,6 +391,8 @@ export interface PiState {
   todoPhases: TodoPhase[];
   // Ask 用户提问
   askQuestions: AskQuestion[] | null;
+  /** 挂起提问所属会话（回传答案时告诉主进程是哪个会话的提问） */
+  askSessionId: string | null;
   // 权限沙箱策略 + 挂起的审批请求（来自主进程 pi:permissionRequest）
   permissionPolicy: PermissionPolicy;
   pendingPermissionRequest: PermissionRequest | null;
@@ -421,6 +436,8 @@ export interface PiState {
   setThinkingLevel: (l: string) => void;
   setAvailableModels: (m: any[]) => void;
   setSessionInfo: (info: any) => void;
+  /** 更新会话槽状态投影（推送/主动拉取共用） */
+  setSessionSlots: (slots: SessionSlotSnapshot[]) => void;
   setSessionLabel: (label: string | null) => void;
   setStats: (s: SessionStats | null) => void;
   /** 先清空 stats，再异步拉取当前会话的 token 用量（切换/新建/fork/导航会话后调用） */
@@ -466,6 +483,8 @@ export interface PiState {
   setShowBookmarks: (v: boolean) => void;
   setShowThinkingBlocks: (v: boolean) => void;
   setCollapseToolCalls: (v: boolean) => void;
+  /** 同项目并发提醒开关（持久化到 ui-config.json） */
+  setSameProjectBusyWarn: (v: boolean) => void;
   /** 设置模型回复期间消息的默认投递方式（持久化到 ui-config.json） */
   setStreamingSendMode: (m: PendingSendMode) => void;
   setNotifyEnabled: (v: boolean) => void;
@@ -475,7 +494,7 @@ export interface PiState {
   setTodoPanelOpen: (v: boolean) => void;
   setTodoPanelWidth: (n: number) => void;
   setTodoPhases: (phases: TodoPhase[]) => void;
-  setAskQuestions: (q: AskQuestion[] | null) => void;
+  setAskQuestions: (q: AskQuestion[] | null, sessionId?: string | null) => void;
   /** 切换权限沙箱策略（持久化 + 同步主进程闸门，立即生效） */
   setPermissionPolicy: (p: PermissionPolicy) => void;
   /** 注入聊天输入框文本（设置页“创建技能”等场景使用，ChatInput 消费后清空） */
@@ -486,7 +505,6 @@ export interface PiState {
   setSubagentSnapshot: (s: SubagentSnapshot | null) => void;
   addMessage: (msg: any) => void;
   setMessages: (msgs: any[]) => void;
-  setStreamingMessage: (msg: any | null) => void;
   updateToolExecution: (id: string, update: Partial<ToolExecutionState>) => void;
   /** 从 messages 重建 toolExecutions（切会话/加载历史时调用） */
   rebuildToolExecutions: (messages: any[]) => void;
@@ -612,6 +630,7 @@ export interface UiSettings {
   showBookmarks?: boolean;
   showThinkingBlocks?: boolean;
   collapseToolCalls?: boolean;
+  sameProjectBusyWarn?: boolean;
   streamingSendMode?: PendingSendMode;
   // 通知设置（主进程 readNotifyConfig 读同一份文件裁决是否发送）
   notifyEnabled?: boolean;
@@ -702,6 +721,8 @@ export function normalizeUiSettings(ui: UiSettings): Partial<UiSettings> {
       patch.showThinkingBlocks = value;
     if (field === 'collapseToolCalls' && typeof value === 'boolean')
       patch.collapseToolCalls = value;
+    if (field === 'sameProjectBusyWarn' && typeof value === 'boolean')
+      patch.sameProjectBusyWarn = value;
     if (field === 'streamingSendMode' && (value === 'steer' || value === 'followUp')) {
       patch.streamingSendMode = value;
     }
@@ -744,7 +765,6 @@ export function normalizeUiSettings(ui: UiSettings): Partial<UiSettings> {
 
 const initialState = {
   messages: [],
-  streamingMessage: null,
   toasts: [],
   isStreaming: false,
   streamRate: 0,
@@ -763,6 +783,7 @@ const initialState = {
   sessionLoadVersion: 0,
   isSessionLoading: true,
   sessionFile: null,
+  sessionSlots: [],
   cwd: '',
   sessionName: null,
   sessionLabel: null,
@@ -812,6 +833,8 @@ const initialPreferences = {
   showBookmarks: true,
   showThinkingBlocks: true,
   collapseToolCalls: true,
+  // 同项目已有其他会话在跑时提醒一次（输入框蒙层，可在设置页关闭）
+  sameProjectBusyWarn: true,
   // 保持既有行为：Enter 默认发送引导消息（排队消息走 Alt+Enter）
   streamingSendMode: 'steer' as PendingSendMode,
   // 通知设置（默认：开 / 仅窗口失焦时 / 轮次完成开 / 提问开）
@@ -823,6 +846,7 @@ const initialPreferences = {
   todoPanelWidth: TODO_PANEL_WIDTH_DEFAULT,
   todoPhases: [],
   askQuestions: null,
+  askSessionId: null,
   // 权限沙箱：默认自动审批安全指令（主进程侧同默认，loadUiSettings 后覆盖）
   permissionPolicy: 'auto-safe' as PermissionPolicy,
   pendingPermissionRequest: null,
@@ -898,7 +922,11 @@ export const usePiStore = create<PiState>((set, get) => ({
       })
       .catch(() => {});
   },
-  setSessionInfo: (info) =>
+  setSessionSlots: (slots) => set({ sessionSlots: slots }),
+  setSessionInfo: (info) => {
+    // 流式消息是模块级状态（见 lib/streaming-message.ts，避免逐 token 写 store 拖累所有订阅者），
+    // 切会话时必须一并清空，否则旧会话的流式条会悬留在新会话底部。
+    setStreamingMessage(null);
     set((s) => ({
       sessionId: info.sessionId,
       sessionRevision: info.sessionRevision,
@@ -908,7 +936,6 @@ export const usePiStore = create<PiState>((set, get) => ({
       model: info.model,
       thinkingLevel: info.thinkingLevel,
       messages: info.messages || [],
-      streamingMessage: null,
       isStreaming: info.isStreaming ?? false,
       isCompacting: false,
       retryInfo: null,
@@ -925,11 +952,13 @@ export const usePiStore = create<PiState>((set, get) => ({
       todoPhases: [],
       subagentSnapshot: null,
       askQuestions: null,
+      askSessionId: null,
       pendingPermissionRequest: null,
       // 会话身份变更时清空「本次会话允许」状态（与主进程 clearPending 对齐；
       // 同一 sessionId 重拉（初始化/目录切换）不受影响）
       sessionAllowedTools: !sameSession(s, info) ? [] : s.sessionAllowedTools
-    })),
+    }));
+  },
   setSessionLabel: (label: string | null) => set({ sessionLabel: label }),
   setStats: (s) => set({ stats: s }),
   refreshStats: () => {
@@ -977,7 +1006,12 @@ export const usePiStore = create<PiState>((set, get) => ({
     applyTheme(get().themeFamily, m);
     set({ colorMode: m });
   },
-  bumpSessionVersion: () => set((s) => ({ sessionVersion: s.sessionVersion + 1 })),
+  // 会话列表 / 标题 / 会话树的刷新走共享去抖：一次 run 结算只刷一次，
+  // 而不是侧栏、标题栏、会话树各拉一次 IPC、各自重渲染
+  bumpSessionVersion: () => {
+    scheduleSessionRefresh();
+    set((s) => ({ sessionVersion: s.sessionVersion + 1 }));
+  },
   bumpGitBranchVersion: () => set((s) => ({ gitBranchVersion: s.gitBranchVersion + 1 })),
   setFontSize: (n) => {
     const v = clamp(Math.round(n), FONT_SIZE_MIN, FONT_SIZE_MAX);
@@ -1087,6 +1121,10 @@ export const usePiStore = create<PiState>((set, get) => ({
     saveSetting('collapseToolCalls', v);
     set({ collapseToolCalls: v });
   },
+  setSameProjectBusyWarn: (v) => {
+    saveSetting('sameProjectBusyWarn', v);
+    set({ sameProjectBusyWarn: v });
+  },
   setStreamingSendMode: (m) => {
     saveSetting('streamingSendMode', m);
     set({ streamingSendMode: m });
@@ -1114,7 +1152,8 @@ export const usePiStore = create<PiState>((set, get) => ({
     set({ todoPanelWidth: v });
   },
   setTodoPhases: (phases) => set({ todoPhases: phases }),
-  setAskQuestions: (q) => set({ askQuestions: q }),
+  setAskQuestions: (q, sessionId) =>
+    set({ askQuestions: q, askSessionId: q ? (sessionId ?? null) : null }),
   setPendingPermissionRequest: (r) => set({ pendingPermissionRequest: r }),
   setSessionAllowedTools: (tools) => set({ sessionAllowedTools: tools }),
   setPermissionPolicy: (p) => {
@@ -1139,7 +1178,6 @@ export const usePiStore = create<PiState>((set, get) => ({
   setPlanPendingProposal: (p) => set({ planPendingProposal: p }),
   addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg] })),
   setMessages: (msgs) => set({ messages: msgs }),
-  setStreamingMessage: (msg) => set({ streamingMessage: msg }),
   updateToolExecution: (id, update) =>
     set((s) => ({
       toolExecutions: {

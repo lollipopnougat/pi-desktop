@@ -3,6 +3,7 @@ import Icon from '../common/Icon';
 import ConfirmDialog from '../common/ConfirmDialog';
 import { t } from '../../i18n/zh';
 import { usePiStore } from '../../store/pi-store';
+import { useShallow } from 'zustand/react/shallow';
 
 /**
  * 设置页 - Skill 管理 tab：查看/编辑/删除/启用禁用/导入/创建
@@ -25,7 +26,13 @@ export default function SkillsTab({
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const addMenuRef = useRef<HTMLDivElement>(null);
-  const { setSettingsOpen, setPendingChatInput, showToast } = usePiStore();
+  const { setSettingsOpen, setPendingChatInput, showToast } = usePiStore(
+    useShallow((s) => ({
+      setSettingsOpen: s.setSettingsOpen,
+      setPendingChatInput: s.setPendingChatInput,
+      showToast: s.showToast
+    }))
+  );
 
   useEffect(() => {
     loadSkills();

@@ -45,6 +45,7 @@ function makePi() {
     getAvailableModels: vi.fn(async (): Promise<any[]> => []),
     getCommands: vi.fn(async (): Promise<any[]> => []),
     getTodoPhases: vi.fn(async () => ({ phases: [] as any[] })),
+    getPendingInteractions: vi.fn(async () => ({ ask: null, permission: null })),
     getSessionStats: vi.fn(async (): Promise<any> => ({ cost: 2 })),
     setPlanMode: vi.fn(async () => {}),
     setUiSettings: vi.fn(async () => {}),

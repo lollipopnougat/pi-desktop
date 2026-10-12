@@ -14,6 +14,7 @@
  * 首版边界:不做 worktree 隔离 / 横向通信 / park-revive / 子 session 持久化。
  */
 import type { PiBridge } from '../pi-bridge';
+import type { SessionHost } from '../session-slot';
 import { t } from '../../src/i18n/zh';
 import { discoverAgents, resolveSpawnList, type RegistryResult } from './registry';
 import { SubagentExecutor } from './executor';
@@ -65,6 +66,8 @@ const MAX_TRACKED_RUNS = 50;
 
 export class SubagentController {
   private piBridge: PiBridge;
+  /** 所服务的会话（Stage 0 = 焦点槽；多会话阶段按槽注入） */
+  private host: SessionHost;
   private executor: SubagentExecutor;
   private definitions: RegistryResult = { agents: [], diagnostics: [] };
   private runs: ChildRun[] = [];
@@ -80,9 +83,10 @@ export class SubagentController {
   maxConcurrency = DEFAULT_MAX_CONCURRENCY;
   private semaphore = new Semaphore(DEFAULT_MAX_CONCURRENCY);
 
-  constructor(piBridge: PiBridge) {
+  constructor(piBridge: PiBridge, host: SessionHost) {
     this.piBridge = piBridge;
-    this.executor = new SubagentExecutor(piBridge, this);
+    this.host = host;
+    this.executor = new SubagentExecutor(piBridge, this, host);
   }
 
   /** subagent 扩展启动时注入 followUp 通道 */
@@ -108,7 +112,7 @@ export class SubagentController {
 
   /** 加载 agent 定义(cwd 变化时重扫;每次 task 调用前确保已加载) */
   ensureDefinitionsLoaded(): RegistryResult {
-    const cwd = this.piBridge.cwd;
+    const cwd = this.host.cwd();
     if (this.loadedForCwd === cwd && this.definitions.agents.length >= 0) {
       // 已为当前 cwd 加载过(空结果也缓存,避免每次扫描)
       if (this.loadedForCwd === cwd) return this.definitions;
@@ -434,7 +438,7 @@ export class SubagentController {
 
   emitUpdate(): void {
     try {
-      this.piBridge.sendSessionEvent('pi:subagentUpdate', this.getSnapshot());
+      this.host.sendSessionEvent('pi:subagentUpdate', this.getSnapshot());
     } catch {}
   }
 
@@ -452,7 +456,7 @@ export class SubagentController {
   /** 从当前会话 entries 恢复历史 run 记录(切会话/重开应用后调面板不再为空) */
   restoreFromSession(): void {
     try {
-      const sm = this.piBridge.getSession()?.sessionManager;
+      const sm = this.host.current()?.sessionManager;
       if (!sm) return;
       const entries = sm.getBranch?.() ?? sm.getEntries?.() ?? [];
       const restored = loadRunsFromEntries(entries);
@@ -472,7 +476,7 @@ export class SubagentController {
   private persistRun(run: ChildRun): void {
     if (!isTerminalRunStatus(run.status)) return;
     try {
-      const sm = this.piBridge.getSession()?.sessionManager;
+      const sm = this.host.current()?.sessionManager;
       if (!sm || typeof sm.appendCustomEntry !== 'function') return;
       sm.appendCustomEntry(SUBAGENT_STATE_ENTRY_TYPE, { run: serializeChildRun(run) });
     } catch {

@@ -34,6 +34,16 @@ module.exports = {
           orange: od('orange'),
           cyan: od('cyan')
         }
+      },
+      keyframes: {
+        // 渐变缓慢来回流动（配 bg-[length:200%_100%] 使用，见聊天框模型选择器的 max 等级）
+        'gradient-flow': {
+          '0%, 100%': { backgroundPosition: '0% 50%' },
+          '50%': { backgroundPosition: '100% 50%' }
+        }
+      },
+      animation: {
+        'gradient-flow': 'gradient-flow 8s ease-in-out infinite'
       }
     }
   },

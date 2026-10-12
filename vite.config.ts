@@ -14,6 +14,17 @@ export default defineConfig({
           startup();
         },
         vite: {
+          resolve: {
+            alias: {
+              // SDK 的 exports 地图只开放 `.`/`./rpc-entry`/`./client`/`./experimental/plugin`，
+              // 而 exportSessionToHtml/exportFromFile 只存在于 dist 里。用 alias 指到真实文件，
+              // 随主进程一起 bundle（见 electron/sdk-export-html.ts）。
+              '@pi-export-html': path.resolve(
+                __dirname,
+                'node_modules/@earendil-works/pi-coding-agent/dist/core/export-html/index.js'
+              )
+            }
+          },
           build: {
             outDir: 'dist-electron',
             sourcemap: false,

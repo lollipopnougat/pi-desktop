@@ -101,7 +101,8 @@ Electron 主进程 (electron/)
 
 ### 状态层（`src/store/pi-store.ts`）
 
-- 单一 Zustand store `usePiStore`，含 messages / streamingMessage / model / availableModels / session 信息 / UI 偏好等
+- 单一 Zustand store `usePiStore`，含 messages / model / availableModels / session 信息 / 会话槽投影（`sessionSlots`）/ UI 偏好等
+- **流式消息不在 store 里**：`src/lib/streaming-message.ts` 是模块级单槽（`setStreamingMessage` / `getStreamingMessage` / `subscribeStreamingMessage`，rAF 合帧 + `startTransition` 提交，清空时同步提交），组件用 `src/hooks/useStreamingMessage.ts` 订阅。**禁止把流式消息放回 store**（逐 token 全量 set 会让所有订阅者重渲染，这是 P1 优化前的性能根因）；`setSessionInfo` 会清空它
 - UI 偏好（fontSize、sidebarWidth、rightPanelWidth、themeFamily、monaco*/terminal*/notify* 等）持久化到 `~/.pi-desktop/ui-config.json`（经 `pi:setUiSettings` IPC），带 clamp 边界；启动时先用默认值，App 挂载后 `loadUiSettings()` 异步覆盖
 - 历史字段：`codePanelWidth` 已迁移为 `rightPanelWidth`；`fileTreeWidth` 仍持久化但由 `src/components/code/CodePanel.tsx` / `src/components/workspace/RightWorkspace.tsx` 直接读，不在 store 的 PiState 里
 - 常量：`FONT_SIZE_MIN=12`、`FONT_SIZE_MAX=999`（不限制上限）
@@ -112,14 +113,36 @@ Electron 主进程 (electron/)
 - **重要陷阱**：`agent_end` 事件的 `event.messages` 只是**本轮新增消息**（prompts + 本次 assistant 回复），不含历史。UI 使用增量合并，不能用它覆盖历史。重载完整历史走 `getMessageSnapshot(identity)` → `getMessages(snapshotId, offset, limit)` → `releaseMessageSnapshot`，统一由 `src/hooks/loadSession.ts` 管理
 - 用户消息在 `message_end`（role=user）时立即追加到 store；`agent_end` 按稳定键增量合并，不全量传输消息。
 
-### 会话切换与生命周期
+### 会话槽与多会话后台运行
 
-- 所有 renderer 会话替换入口统一使用 `transitionSession()`（`src/hooks/loadSession.ts`）。它串行提交操作，并使旧请求失效；禁止自行组合 `setCwd` / `switchSession` 后直接写 store。
-- 跨项目切换直接 `switchSession(path)`；跨项目新建用 `newSession(cwd)`；`setCwd(cwd)` 返回 void，状态由统一加载流程读取。
-- 主进程替换操作经 `PiBridge.runSessionOperation()` 串行执行。`sessionId + sessionRevision` 标识当前会话实例/分支，A→B→A 也会产生新版本；`sessionRevision` / `sessionLoadVersion` / `isSessionLoading` 仅为内存状态，不持久化为 UI 偏好。
-- SDK 事件携带身份，会话级推送经 `sendSessionEvent` 携带身份；异步刷新结果用 `captureSessionGuard` 校验后再写 store。
-- `PiBridge.dispose()` 为异步且幂等，必须 await。重建 runtime 前等待旧实例 abort、SDK shutdown/dispose 和子任务收尾；不能只覆盖 runtime 引用。
-- Monaco 文件读取/目录列表统一使用 `resolveProjectPath`：以真实路径校验项目边界，禁止字符串前缀校验。
+- 主进程用「会话槽」承载会话：`electron/session-slot.ts` 的 `SessionSlot`（runtime / session / cwd / sessionManager / 独立 `SessionAccess` / 事件订阅 / `pendingPrompts`），`PiBridge` 持 `slots: Map<槽键, SessionSlot>` + `focusedKey`。**`PiBridge.sessionFor(key?)` 是会话解析的唯一入口**（不传 = 焦点槽；也接受 sessionId / 会话文件路径，见 `findSessionSlot`）。`getSession()` 已删除，新代码禁止再引入隐式「当前会话」。
+- 两条公理：**① 存在 ≠ 焦点**——切焦点不销毁旧槽，后台槽继续跑完当前轮（`runFocusOperation` 不中止任何槽；只有 `runSessionOperation`（fork / navigateTree / 导出临时切换）会中止焦点槽）。**② 同一会话文件只能有一个槽**——SDK `SessionManager` 的 `_rewriteFile` 用 `"w"` 截断重写，两个 AgentSession 写同一文件会互相覆盖（槽查重见 `findSlotBySessionFile`）。
+- 后台槽的事件**不推渲染进程**：焦点门闩在 `createSlot()` 的 `sendEvent` 闭包里（`focusedKey !== key` 直接 return）；侧栏靠 `pi:sessionSlots`（120ms 节流投影：running / unread / pendingApprovals / pendingAsks / queuedPrompts）与 `pi:getSessionSlots` 展示，切会话必须走 `openSessionInSlot` / `newSessionInSlot`（不要自己组合 runtime.switchSession）。
+- 并发闸门：`PiBridge.MAX_RUNNING_SESSIONS = 3`，入口 `submitPrompt()`（`pi:prompt` 与 goal 首条 prompt 都走它），超限进 `slot.pendingPrompts`，`agent_end` 时 `drainPendingPrompts()` 放行；`abortSlot(key)` 可停后台会话（连排队一起清）。
+- 控制器按槽实例化：`createSlotControllers(slot)` 注入该槽的 `SessionHost`（`current()` / `cwd()` / `sendSessionEvent()` / `setPlanMode()`）；`PiBridge` 上的 `goalController` / `planController` / `permissionController` / … 字段是**焦点槽镜像**（`focusSlot` 时重指），历史 IPC 调用点仍可用，但控制器内部一律走 `host`，异步回调用捕获的槽、禁止重新解析「当前会话」。测试用 `new PiBridge({ factories })` 注入替身（`SlotControllerFactories`）。
+- 交互按会话路由：ask 工具用 `ctx.sessionManager.getSessionId()` 分键（`electron/tools/ask-tool.ts` 的 `pendingAsks`）；权限审批按请求 id 记槽（`permissionRequestSlots` + `resolvePermissionRequest`），切回会话时 `replayPending()` 重推；渲染端刷新会话状态后用 `pi:getPendingInteractions` **主动拉一次**（重推会在切换过程中被「焦点会话」过滤丢掉）。
+- MCP 只有一份客户端集合（`mcpManager.currentCwd` 单值）：切焦点时按焦点项目重指（`mcpProjectCwd`）；**取舍**是后台会话在别的项目里调 MCP 工具会失败。
+- 会话列表：`pi:listSessions` 返回「扫描结果 + 槽里已有但扫描不到的会话」（`PiBridge.mergeSessionList`，只补**已经有消息**的槽）；SDK 在首条 user/assistant 消息时才创建会话文件，所以新建会话在发出第一条消息时由渲染端 `bumpSessionVersion()` 立刻刷新列表。
+- 渲染端：所有会话替换入口统一 `transitionSession()`（`src/hooks/loadSession.ts`）。`sessionId + sessionRevision` 标识会话实例（A→B→A 也产生新版本）；`sessionRevision` / `sessionLoadVersion` / `isSessionLoading` 仅为内存状态，不持久化为 UI 偏好。异步刷新结果用 `captureSessionGuard` 校验后再写 store。
+- `PiBridge.dispose()` 为异步且幂等，必须 await；Monaco 文件读取/目录列表统一使用 `resolveProjectPath`（真实路径校验项目边界，禁止字符串前缀校验）。
+- 会话槽生命周期日志走 app 日志通道的 `slots` phase（默认关闭）：`electron/pi-bridge.ts` 的 `logSlots()`，排查「后台会话为什么停了」时开日志（app 通道 + debug 级）即可。
+
+**多会话并发的已知取舍（改这块前先读）**
+
+- MCP 只有一份客户端集合（`mcpProjectCwd` 单值）：后台会话在**非焦点项目**里调 MCP 工具会失败；终端 / 浏览器 / 统计 / 日志等非会话级能力是进程单例，天然共享。
+- 同一会话文件只能有一个槽（`findSlotBySessionFile` / `findSessionSlot`）：SDK `SessionManager` 的 `_rewriteFile` 用 `"w"` 截断重写，两个 AgentSession 写同一文件会互相覆盖。
+- **文件写入无锁**：同项目两个会话可以同时改同一文件 / 跑 git 命令，只有 `resolveProjectPath` 的项目边界校验，没有文件级互斥（产品取舍，UI 也未提示）。
+- 记忆是「读-改-写 + 乐观版本校验」（`electron/memory/persistence.ts` 的 `commitMemoryChanges` 比对 `revisionOf(readRaw(file))`）：并发时后者抛「记忆版本冲突」并干净放弃（不写坏文件），需重试；`~/.pi-desktop/memory/` 的 `state.json` / `tombstones.json` / 管道文件是全局单份、**无跨进程锁** → 两个 Pi Desktop 实例（即使 user-data-dir 不同，配置目录相同）会互相覆盖。
+- 并发闸门只拦 `submitPrompt()`：goal 的 `agent_end` 续跑走 SDK 内部 `agent.continue()`，不受 `MAX_RUNNING_SESSIONS` 限制，多个 goal 会话可同时跑。
+- 后台槽不推事件 ⇒ 在途流式文本要等下一个 delta（~30ms）才出现在界面上（`src/lib/streaming-message.ts` 仍是模块级单槽，按会话分键未做）。
+- `pi:exportSessionHtml` 对未加载的旧会话走 SDK `exportFromFile`：免切换但导出页不含 systemPrompt / tools 附录段（只有 `exportSessionToHtml` 有，而它没从包根导出）。
+
+### 流式渲染
+
+- 流式消息：`src/lib/streaming-message.ts` 模块级单槽 + `useStreamingMessage()`（rAF 合帧、`startTransition` 提交、清空时同步提交），**不要放回 store**。
+- 流式 Markdown：`src/components/common/Markdown.tsx` 的 `streaming` prop → `src/utils/markdown-blocks.ts` 的 `splitMarkdownBlocks()` 按「安全块边界」分块，已闭合块的解析结果进模块级缓存（`RENDER_CACHE`），最后一块跳过 hljs 高亮。切点规则是**宁可不切、不可切错**：只切「紧跟空白行 + 顶格 + 不是列表标记 / 引用 / 表格 / 分隔线 + 不在围栅内部」；内容含参考式链接定义（文档级作用域）时退化为整篇解析。
+- `marked` 的 `MarkedOptions` 用 `Omit` 排除了 `renderer`：自定义 renderer 只能 `new Marked()` 实例 + `use({ renderer })`，不能 `marked.parse(src, { renderer })`。
+- 长会话渲染：ChatStream 拆成 `MessageList` / `StreamingTail` / `ChatItemView` / `ChatTurnView` 四层 memo；改这些组件时记住「订阅面 ≫ 渲染面」是卡顿根因——禁止 `usePiStore()` 全量订阅，多字段用 `useShallow`，模块级常量替代内联对象/空数组（内联会废掉 memo）。
 
 ### IPC API 三层约定
 
@@ -150,7 +173,7 @@ Electron 主进程 (electron/)
 
 | 功能 | 主进程 | IPC handler | 渲染进程 | 设置页 |
 |---|---|---|---|---|
-| 会话/分支/导出 | `electron/ipc/session-ipc.ts`、`electron/session-access.ts` | `session-ipc.ts` | `src/components/session/**` | — |
+| 会话/分支/导出/会话槽 | `electron/session-slot.ts`、`electron/pi-bridge.ts`（槽容器）、`electron/ipc/session-ipc.ts`、`electron/session-access.ts` | `session-ipc.ts` | `src/components/session/**` | — |
 | 模型与供应商 | `electron/provider-config.ts`、`electron/model-presets.ts` | `model-ipc.ts` | `settings/ModelsTab.tsx`、`chat/ModelSelector.tsx` | 模型配置 |
 | 决策模型 | `electron/classifier-config.ts`、`electron/classifier/` | `classifier-ipc.ts` | `settings/ClassifierTab.tsx` | 决策模型 |
 | 权限沙箱 | `electron/permission/` | `permission-ipc.ts` | `chat/PermissionApprovalPanel.tsx` | 智能体配置 |
@@ -240,11 +263,19 @@ Electron 主进程 (electron/)
 ## 开发流程备忘
 
 1. 启动：`npm run dev`，日志在 `/tmp/piui-dev.log`（后台运行时）
-2. vite-plugin-electron 对 `electron/` 下改动会自动重载主进程；renderer 改动走 HMR
+2. renderer（`src/**`）改动走 HMR；改 `src/types/pi.d.ts` 只是一次 page reload。**主进程（`electron/**`、`preload.ts`）改动会触发 vite-plugin-electron 重建，旧 Electron 被 SIGTERM 后不会自动重启**（重建开始时会清空 `dist-electron/`，构建失败则整个 `npm run dev` 直接退出）——改完主进程必须手动重启 dev。dev 在跑时**不要**跑 `npm run build`：它改写 `dist-electron/`，会被 watcher 当成变更，同样把实例杀掉
+   - 反例：`npx tsc -b`（输出到 `node_modules/.tmp/`）、`npm run lint`、`npx vitest run`、`git status`、`git commit` 都不会触发重建，dev 实例可以一直在跑
+   - **注意「只改 renderer」不等于安全**：只要文件同时也在主进程/预加载的模块图里，改它就会触发主进程重建。已知两处：`src/i18n/zh.ts`（被 `electron/pi-bridge.ts`、`electron/ipc/session-ipc.ts`、`electron/subagents/controller.ts` 等大量引用）与 `src/types/{shared,session,usage-statistics}.ts`（被 `preload.ts` 引用）。改这几个文件后要手动重启 dev
 3. dev server 易退出，重启前先 `pgrep -f "piui.*vite|electron"` 检查，或 `lsof -ti :5173`
 4. 停止：关闭 Electron 窗口或 `kill <pid>`
 
 ## 重要注意事项
+
+- **`highlight.js` 的 `highlightAuto` 必须限定候选语言子集**：不给第二参数时它会拿全部 ~190 种语言逐个试。实测（对全量历史会话跑一遍）431 个代码块里只有 10 个没有语言标注，却占掉 86% 的高亮耗时——最坏一个 239 字符的目录树 187ms、一个 14 字符的中文片段 27ms；限定成 `src/components/common/Markdown.tsx` 里的 `AUTO_LANGS` 子集后总耗时 281ms → 32ms（省 89%，未命中的按纯文本渲染）。同时超过 `MAX_HIGHLIGHT_CHARS`（30k 字符）的块不做高亮。
+
+- **需要 SDK 未从包根导出的 API 时，用 vite alias + wrapper 打进 bundle**：SDK 的 `exports` 地图只开放 `.` / `./rpc-entry` / `./client` / `./experimental/plugin`，深路径 import（如 `dist/core/export-html/index.js` 的 `exportFromFile`）会被 exports 校验拒绍（构建期即报错）。做法见 `electron/sdk-export-html.ts` + `vite.config.ts` 主进程块的 `resolve.alias['@pi-export-html']`：alias 指到 dist 里的真实文件，随主进程一起 bundle（打包后不依赖运行时动态 import）。**`tsconfig.json` 的 `paths` 也要加同名映射，且不能带 `.js` 扩展名**（带了 TS 只解析到 `.js`、找不到同名 `.d.ts`，报 TS7016）。这类模块若在运行时读盘（如导出用的 `dist/core/export-html/template.*`），`asarUnpack` 必须覆盖那些文件。
+
+- **多会话与流式渲染的约定见「会话槽与多会话后台运行」「流式渲染」两节**：隐式当前会话已删除（一律用 `sessionFor` / `SessionHost`）、流式消息不要放回 store、切会话必须走 `openSessionInSlot` / `newSessionInSlot`（`runFocusOperation`，不中止后台会话）。
 
 - **系统提示词里的 pi-desktop 说明**：`resources/docs/pi-desktop-system-prompt.md`（打包后 `process.resourcesPath/docs/`）由 `electron/pi-bridge.ts` 的 `getDesktopPromptAddendum()` 读出，经 `resourceLoaderOptions.appendSystemPromptOverride: (base) => [...base, 文本]` 注入，渲染进 SDK 提示词的 `<addendum>` 段（顺序：preamble/tools/rules/docs/addendum/skills/cwd）。**不要改用 `appendSystemPrompt`**：显式传它会让 SDK 跳过对用户 `~/.pi-desktop/APPEND_SYSTEM.md` 与项目 `.pi-desktop/APPEND_SYSTEM.md` 的发现（等于把用户自己的追加段整体顶掉，且 `resolvePromptInput` 会把不存在的路径当字面文本塞进提示词）；override 只追加、不改写用户文件。回归测试：`tests/prompt/desktop-prompt.test.ts`
 - **`PI_PACKAGE_DIR` ↔ `asarUnpack` 清单的耦合（改打包配置必看）**：打包版 `electron/main.ts` 把 `PI_PACKAGE_DIR` 指向 `app.asar.unpacked/node_modules/@earendil-works/pi-coding-agent`，使 `getReadmePath()/getDocsPath()/getExamplesPath()`（提示词 `<docs>` 段）与 `getExportTemplateDir()`（HTML 导出，`electron/ipc/session-ipc.ts` 在用）落在**真实文件**上——SDK 的 `grep`/`find` 工具 spawn 的是真实进程（rg/fd），`bash` 同理，**读不了 asar 内文件**。因此 `package.json` 的 `asarUnpack` 必须覆盖 `getPackageDir()` 的全部消费者：`docs/**`、`examples/**`、`README.md`、`CHANGELOG.md`、`package.json`、`dist/core/export-html/**`、`dist/modes/interactive/theme/**`。SDK 升级若新增 `getPackageDir()` 消费者（如 `getInteractiveAssetPath`），需同步该清单；`main.ts` 有 `package.json` 存在性回退检查，缺失时会退回 asar 内路径（只读工具仍可用，shell 工具不可）

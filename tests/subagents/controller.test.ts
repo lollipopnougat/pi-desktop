@@ -18,6 +18,11 @@ function createMockBridge(cwd = '/proj') {
     agentDir: '/home/.pi-desktop',
     modelRuntime: { getModel: () => undefined },
     getSession: () => ({ model: { id: 'm' } }),
+    sessionHost: () => ({
+      current: () => ({ model: { id: 'm' } }),
+      cwd: () => cwd,
+      sendSessionEvent: () => true
+    }),
     webContents: null
   } as any;
 }
@@ -38,7 +43,7 @@ function makeDef(name: string, tools?: string[]): AgentDefinition {
 
 function createController(defs: AgentDefinition[]) {
   const bridge = createMockBridge();
-  const controller = new SubagentController(bridge);
+  const controller = new SubagentController(bridge, bridge.sessionHost());
   // 注入定义与 spawn mock
   (controller as any).definitions = { agents: defs, diagnostics: [] };
   (controller as any).loadedForCwd = bridge.cwd;
@@ -218,7 +223,7 @@ describe('并发上限与 run 管理', () => {
 
   it('queued run 停止后不再执行', async () => {
     const bridge = createMockBridge();
-    const controller = new SubagentController(bridge);
+    const controller = new SubagentController(bridge, bridge.sessionHost());
     (controller as any).definitions = {
       agents: [makeDef('scout', ['read'])],
       diagnostics: []

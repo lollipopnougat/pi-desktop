@@ -18,6 +18,7 @@ import {
   DEFAULT_LOG_CONFIG,
   LOG_RETENTION_MAX_DAYS,
   clearLogs,
+  deleteLogFile,
   getLogConfig,
   getLogFilePath,
   getLogsDir,
@@ -25,6 +26,7 @@ import {
   logEvent,
   normalizeLogConfig,
   resetLogStateForTest,
+  resolveLogFilePath,
   setLogConfig,
   shouldLog,
   textSummary,
@@ -205,6 +207,33 @@ describe('logs/logger 文件管理', () => {
     expect(toolsFile?.rotated).toBe(true);
 
     expect(files[0].channel).toBe('model'); // mtime 更新的排在前面
+  });
+
+  it('resolveLogFilePath：只接受日志目录内的 .log / .log.N 名字（防目录穿越）', () => {
+    expect(resolveLogFilePath('app-2026-10-12.log')).toBe(
+      path.join(getLogsDir(), 'app-2026-10-12.log')
+    );
+    expect(resolveLogFilePath('tools-2026-10-12.log.1')).toBe(
+      path.join(getLogsDir(), 'tools-2026-10-12.log.1')
+    );
+    expect(resolveLogFilePath('../ui-config.json')).toBeNull();
+    expect(resolveLogFilePath('/etc/passwd')).toBeNull();
+    expect(resolveLogFilePath('sub/app-2026-10-12.log')).toBeNull();
+    expect(resolveLogFilePath('app-2026-10-12.txt')).toBeNull();
+    expect(resolveLogFilePath('')).toBeNull();
+  });
+
+  it('deleteLogFile：只删指定文件，越界名字直接拒绝', () => {
+    logEvent('model', { phase: 'a' });
+    logEvent('tools', { phase: 'b' });
+    const modelName = path.basename(getLogFilePath('model'));
+    const toolsName = path.basename(getLogFilePath('tools'));
+
+    expect(deleteLogFile('../ui-config.json')).toBe(false);
+    expect(deleteLogFile(modelName)).toBe(true);
+    expect(listLogFiles().map((f) => f.name)).toEqual([toolsName]);
+    // 已删掉的文件再删一次：fs.rmSync(force) 不报错，返回 true（幂等）
+    expect(deleteLogFile(modelName)).toBe(true);
   });
 
   it('clearLogs：删除所有日志文件（含轮转）并返回数量', () => {

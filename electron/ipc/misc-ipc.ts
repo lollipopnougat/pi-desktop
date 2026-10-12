@@ -27,13 +27,12 @@ function isBuiltinSkill(builtinSkillsDir: string, skill: any): boolean {
  * 技能文件不在项目目录内（~/.agents/skills、~/.pi-desktop/skills、内置目录），
  * 点击技能 chip 在代码面板打开时需要放行；写路径不受影响。
  */
-function skillReadableRoots(ctx: MiscContext): string[] {
+function skillReadableRoots(ctx: MiscContext, session: any): string[] {
   const roots: string[] = [];
   try {
     if (ctx.builtinSkillsDir) roots.push(ctx.builtinSkillsDir);
   } catch {}
   try {
-    const session = ctx.getSession();
     const loader = session?.resourceLoader || session?.agent?.state?.resourceLoader;
     for (const s of loader?.getSkills?.()?.skills ?? []) {
       if (typeof s?.baseDir === 'string' && s.baseDir) roots.push(s.baseDir);
@@ -63,7 +62,7 @@ export interface MiscContext extends PiBridgeContext {
  * - 不支持视觉：文本注入路径提示（配合 read_img 工具使用）
  */
 function normalizePromptImages(
-  ctx: MiscContext,
+  session: any,
   text: string,
   opts?: any
 ): [string, any | undefined] {
@@ -72,7 +71,6 @@ function normalizePromptImages(
     return [text, opts];
   }
   try {
-    const session = ctx.getSession();
     const model = session?.model ?? session?.agent?.state?.model;
     const supportsVision = Array.isArray(model?.input) && model.input.includes('image');
     if (supportsVision) {
@@ -122,27 +120,32 @@ export function registerMiscIpc(ctx: MiscContext) {
   };
 
   // === Prompting ===
+  // 会话句柄在入口解析一次：一个请求只作用于它开始时的那个会话
   ipcMain.handle('pi:prompt', async (_e, text: string, opts?: any) => {
-    await ctx.getSession().prompt(...normalizePromptImages(ctx, text, opts));
+    const slot = ctx.sessionFor();
+    const session = slot.requireSession();
+    const [normalized, promptOpts] = normalizePromptImages(session, text, opts);
+    return ctx.submitPrompt(normalized, promptOpts, slot.key);
   });
   ipcMain.handle('pi:steer', async (_e, text: string) => {
-    await ctx.getSession().steer(text);
+    await ctx.sessionFor().requireSession().steer(text);
   });
   ipcMain.handle('pi:followUp', async (_e, text: string) => {
-    await ctx.getSession().followUp(text);
+    await ctx.sessionFor().requireSession().followUp(text);
   });
-  ipcMain.handle('pi:abort', async () => {
-    await ctx.getSession().abort();
+  // 可按会话键停止：侧栏能停后台会话，而不必先切过去（不传 = 焦点会话）
+  ipcMain.handle('pi:abort', async (_e, sessionKey?: string | null) => {
+    await ctx.abortSlot(sessionKey ?? null);
   });
   ipcMain.handle('pi:clearQueue', async () => {
-    return ctx.getSession().clearQueue();
+    return ctx.sessionFor().requireSession().clearQueue();
   });
 
   // 撤回单条排队消息：clearQueue 后把其余消息按原顺序重新入队，返回被撤回的文本
   ipcMain.handle(
     'pi:revokeQueuedMessage',
     async (_e, kind: 'steering' | 'followUp', index: number) => {
-      const session = ctx.getSession();
+      const session = ctx.sessionFor().requireSession();
       const { steering, followUp, removed } = removeQueuedAt(session.clearQueue(), kind, index);
       // 重新入队（保持顺序；steer/followUp 在 streaming 时入队，idle 时直接发送）
       await reenqueuePending(session, steering, followUp);
@@ -154,7 +157,7 @@ export function registerMiscIpc(ctx: MiscContext) {
   ipcMain.handle(
     'pi:removeQueuedMessage',
     async (_e, kind: 'steering' | 'followUp', index: number) => {
-      const session = ctx.getSession();
+      const session = ctx.sessionFor().requireSession();
       const { steering, followUp, removed } = removeQueuedAt(session.clearQueue(), kind, index);
       await reenqueuePending(session, steering, followUp);
       return { ok: removed !== null, removed: removed ?? '' };
@@ -165,7 +168,7 @@ export function registerMiscIpc(ctx: MiscContext) {
   ipcMain.handle(
     'pi:reorderQueuedMessage',
     async (_e, kind: 'steering' | 'followUp', from: number, to: number) => {
-      const session = ctx.getSession();
+      const session = ctx.sessionFor().requireSession();
       const { steering, followUp, moved } = moveQueuedAt(session.clearQueue(), kind, from, to);
       await reenqueuePending(session, steering, followUp);
       return { ok: moved !== null, moved: moved ?? '' };
@@ -176,7 +179,7 @@ export function registerMiscIpc(ctx: MiscContext) {
   ipcMain.handle(
     'pi:switchQueuedMessage',
     async (_e, kind: 'steering' | 'followUp', index: number) => {
-      const session = ctx.getSession();
+      const session = ctx.sessionFor().requireSession();
       const { steering, followUp } = session.clearQueue();
       const steerRest = [...steering];
       const followRest = [...followUp];
@@ -196,9 +199,10 @@ export function registerMiscIpc(ctx: MiscContext) {
   );
 
   // === State ===
-  ipcMain.handle('pi:getState', () =>
-    ctx.sessionAccess.read(() => {
-      const s = ctx.getSession();
+  ipcMain.handle('pi:getState', () => {
+    const slot = ctx.sessionFor();
+    return slot.access.read(() => {
+      const s = slot.requireSession();
       // messages 传输量太大（含完整 tool result/bash output），启动时返回骨架避免 contextBridge 崩溃
       // 需要完整 messages 的调用方请用 pi:getMessages（按需主动拉）
       return {
@@ -207,31 +211,34 @@ export function registerMiscIpc(ctx: MiscContext) {
         isStreaming: s.isStreaming,
         messages: [],
         sessionId: s.sessionId,
-        sessionRevision: ctx.getSessionIdentity().sessionRevision,
+        sessionRevision: slot.identity().sessionRevision,
         sessionFile: s.sessionFile,
         sessionName: s.sessionName,
-        cwd: ctx.cwd
+        cwd:ctx.cwd
       };
-    })
-  );
+    });
+  });
 
   // 分块拉取消息：避免一次性返回全部 messages 导致 contextBridge 崩溃
   // offset/limit 都按消息 index计
   ipcMain.handle('pi:getMessages', (_e, snapshotId: string, offset: number, limit: number) => {
-    return ctx.sessionAccess.page(ctx.getSessionIdentity(), snapshotId, offset, limit);
+    const slot = ctx.sessionFor();
+    return slot.access.page(slot.identity(), snapshotId, offset, limit);
   });
 
   ipcMain.handle('pi:getMessageSnapshot', (_e, expected: SessionIdentity) => {
-    const identity = ctx.getSessionIdentity();
+    // 按 renderer 指定的会话解析槽：拿到的不是它要的那个会话就直接拒掉
+    const slot = ctx.sessionFor(expected.sessionId);
+    const identity = slot.identity();
     if (!sameSession(identity, expected)) throw new Error('SESSION_CHANGED');
-    return ctx.sessionAccess.capture(identity, ctx.getSession().messages ?? []);
+    return slot.access.capture(identity, slot.requireSession().messages ?? []);
   });
   ipcMain.handle('pi:releaseMessageSnapshot', (_e, snapshotId: string) => {
-    ctx.sessionAccess.release(snapshotId);
+    ctx.sessionFor().access.release(snapshotId);
   });
 
   ipcMain.handle('pi:getCommands', async () => {
-    const session = ctx.getSession();
+    const session = ctx.sessionFor().requireSession();
     const loader = session.resourceLoader || session.agent?.state?.resourceLoader;
     if (!loader) return [];
     const commands: any[] = [];
@@ -265,7 +272,7 @@ export function registerMiscIpc(ctx: MiscContext) {
 
   /** 当前会话属性：系统提示词 + 注入的工具 / skill / 命令等 */
   ipcMain.handle('pi:getSessionInfo', async () => {
-    const session = ctx.getSession();
+    const session = ctx.sessionFor().requireSession();
     const loader = session.resourceLoader || session.agent?.state?.resourceLoader;
     let systemPrompt = '';
     const systemPromptSources: { path: string }[] = [];
@@ -346,7 +353,7 @@ export function registerMiscIpc(ctx: MiscContext) {
 
   ipcMain.handle('pi:getSessionStats', async () => {
     try {
-      return await ctx.getSession().getSessionStats();
+      return await ctx.sessionFor().requireSession().getSessionStats();
     } catch {
       return null;
     }
@@ -396,7 +403,7 @@ export function registerMiscIpc(ctx: MiscContext) {
   };
 
   ipcMain.handle('pi:compact', async (_e, instructions?: string) => {
-    return await ctx.getSession().compact(instructions);
+    return await ctx.sessionFor().requireSession().compact(instructions);
   });
 
   // === 全局自定义指令（~/.pi-desktop/AGENTS.md） ===
@@ -424,8 +431,8 @@ export function registerMiscIpc(ctx: MiscContext) {
     }
     fs.writeFileSync(p, text, 'utf-8');
     // 重载资源：让当前会话的 context 文件立即生效（新建会话自然生效）
-    const loader =
-      ctx.getSession()?.resourceLoader || ctx.getSession()?.agent?.state?.resourceLoader;
+    const session = ctx.sessionFor().session;
+    const loader = session?.resourceLoader || session?.agent?.state?.resourceLoader;
     await loader?.reload?.().catch?.(() => {});
   });
 
@@ -441,7 +448,7 @@ export function registerMiscIpc(ctx: MiscContext) {
   });
 
   const reloadSettings = async () => {
-    const sm = ctx.getSession()?.settingsManager ?? ctx.runtime?.settingsManager;
+    const sm = ctx.sessionFor().session?.settingsManager ?? ctx.runtime?.settingsManager;
     await sm?.reload?.().catch(() => {});
   };
 
@@ -472,14 +479,14 @@ export function registerMiscIpc(ctx: MiscContext) {
   // === Reload session ===
   // 对齐 pi CLI `/reload`：重载扩展/配置/系统提示词，重置 pending 状态
   ipcMain.handle('pi:reloadSession', async () => {
-    const session = ctx.getSession();
+    const session = ctx.sessionFor().requireSession();
     await session.reload();
   });
 
   // === Context detail（上下文详情面板数据） ===
   // 组合 messages + systemPrompt + stats + compaction 配置，供渲染进程一次拉取
   ipcMain.handle('pi:getContextDetail', async () => {
-    const session = ctx.getSession();
+    const session = ctx.sessionFor().requireSession();
     const stats = session.getSessionStats();
     return {
       messages: session.messages ?? [],
@@ -500,12 +507,14 @@ export function registerMiscIpc(ctx: MiscContext) {
   // === File operations (for Monaco Code Panel) ===
   // 读路径放行项目目录 + 只读白名单（~/.pi-desktop、~/.agents、技能目录），写路径仍严格限项目内
   ipcMain.handle('pi:readFile', async (_e, filePath: string) => {
-    const fullPath = resolveReadablePath(ctx.cwd, filePath, { extra: skillReadableRoots(ctx) });
+    const roots = skillReadableRoots(ctx, ctx.sessionFor().session);
+    const fullPath = resolveReadablePath(ctx.cwd, filePath, { extra: roots });
     return fs.readFileSync(fullPath, 'utf-8');
   });
 
   ipcMain.handle('pi:listFiles', async (_e, dir?: string) => {
-    const targetDir = resolveReadablePath(ctx.cwd, dir, { extra: skillReadableRoots(ctx) });
+    const roots = skillReadableRoots(ctx, ctx.sessionFor().session);
+    const targetDir = resolveReadablePath(ctx.cwd, dir, { extra: roots });
     // 项目外目录（技能等）返回绝对路径：FileTree 以该绝对目录为根，逐级拼接才能与子项对得上
     const insideProject = isInsideProject(ctx.cwd, targetDir);
     const entries = fs.readdirSync(targetDir, { withFileTypes: true });
@@ -583,8 +592,20 @@ export function registerMiscIpc(ctx: MiscContext) {
 
   // === Ask User ===
   // 渲染进程提交用户对 ask 工具的回答（answers=null 表示用户取消）
-  ipcMain.handle('pi:askUserResponse', async (_e, answers: any[] | null) => {
-    resolveAsk(answers);
+  ipcMain.handle('pi:getPendingInteractions', async () => ctx.pendingInteractions());
+
+  ipcMain.handle('pi:askUserResponse', async (_e, sessionId: unknown, answers: any[] | null) => {
+    // 按会话回传（多会话下可能同时挂着多个提问）；兼容老渲染端把 answers 放在第 1 参
+    const legacy = Array.isArray(sessionId) || sessionId === null;
+    let key = typeof sessionId === 'string' ? sessionId : '';
+    if (!key) {
+      try {
+        key = ctx.sessionFor().session?.sessionId ?? '';
+      } catch {
+        key = '';
+      }
+    }
+    resolveAsk(key, (legacy ? (sessionId as any[] | null) : answers) ?? null);
     return { ok: true };
   });
 

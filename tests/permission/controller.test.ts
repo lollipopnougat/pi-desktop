@@ -41,7 +41,17 @@ function makeFakeBridge() {
       return true;
     }
   } as any;
-  return { bridge, requests };
+  // 控制器经 SessionHost 看自己的会话；本测试不关心会话内容，cwd 保持 undefined（与旧行为一致）。
+  // 审批请求现在经 host.sendSessionEvent 推送（按槽路由），这里与 bridge 共用同一个记录数组。
+  const host = {
+    current: () => null,
+    cwd: () => undefined as unknown as string,
+    sendSessionEvent: (channel: string, request: unknown) => {
+      win.webContents.send(channel, request);
+      return true;
+    }
+  };
+  return { bridge, host, requests };
 }
 
 /** 推动闸门：返回本次是否弹了审批（true）以及弹出的请求 */
@@ -69,7 +79,7 @@ async function runGate(
 describe('PermissionController session-allow', () => {
   it('auto-safe 下目标上报和方案提案直接放行', async () => {
     const fake = makeFakeBridge();
-    const ctrl = new PermissionController(fake.bridge);
+    const ctrl = new PermissionController(fake.bridge, fake.host);
     ctrl.setPolicy('auto-safe');
     for (const toolName of ['goal_complete', 'goal_blocked', 'propose_plan']) {
       const result = await runGate(ctrl, fake, toolName, {});
@@ -80,7 +90,7 @@ describe('PermissionController session-allow', () => {
 
   it('ask-all 仍对目标上报和方案提案请求工具审批', async () => {
     const fake = makeFakeBridge();
-    const ctrl = new PermissionController(fake.bridge);
+    const ctrl = new PermissionController(fake.bridge, fake.host);
     ctrl.setPolicy('ask-all');
     for (const toolName of ['goal_complete', 'goal_blocked', 'propose_plan']) {
       expect((await runGate(ctrl, fake, toolName, {})).pushed).toBe(true);
@@ -89,7 +99,7 @@ describe('PermissionController session-allow', () => {
 
   it('ask-all 下 allow-session 后同名工具自动放行', async () => {
     const fake = makeFakeBridge();
-    const ctrl = new PermissionController(fake.bridge);
+    const ctrl = new PermissionController(fake.bridge, fake.host);
     ctrl.setPolicy('ask-all');
 
     // 第一次：弹审批，用户选择 allow-session
@@ -114,7 +124,7 @@ describe('PermissionController session-allow', () => {
 
   it('auto-safe 下 allow-session 对非安全工具同样生效', async () => {
     const fake = makeFakeBridge();
-    const ctrl = new PermissionController(fake.bridge);
+    const ctrl = new PermissionController(fake.bridge, fake.host);
     ctrl.setPolicy('auto-safe'); // 默认
 
     const p = ctrl.gateForTest('mcp', { op: 'call' });
@@ -130,7 +140,7 @@ describe('PermissionController session-allow', () => {
 
   it('clearPending（会话切换）后恢复逐次审批', async () => {
     const fake = makeFakeBridge();
-    const ctrl = new PermissionController(fake.bridge);
+    const ctrl = new PermissionController(fake.bridge, fake.host);
     ctrl.setPolicy('ask-all');
 
     const p = ctrl.gateForTest('mcp', { op: 'call' });
@@ -147,7 +157,7 @@ describe('PermissionController session-allow', () => {
 
   it('clearSessionAllowedTools 手动撤销', async () => {
     const fake = makeFakeBridge();
-    const ctrl = new PermissionController(fake.bridge);
+    const ctrl = new PermissionController(fake.bridge, fake.host);
     ctrl.setPolicy('ask-all');
 
     const p = ctrl.gateForTest('mcp', { op: 'call' });
@@ -165,7 +175,7 @@ describe('PermissionController session-allow', () => {
 
   it('allow-all 策略仍然完全放行（不受会话级状态影响）', async () => {
     const fake = makeFakeBridge();
-    const ctrl = new PermissionController(fake.bridge);
+    const ctrl = new PermissionController(fake.bridge, fake.host);
     ctrl.setPolicy('allow-all');
     const r = await runGate(ctrl, fake, 'bash', { command: 'rm -rf /' });
     expect(r.pushed).toBe(false);
@@ -178,7 +188,7 @@ describe('PermissionController 会话级放行 × 危险命令 denylist', () => 
     '%s 下危险规则优先于会话授权和两种自定义白名单',
     async (policy) => {
       const fake = makeFakeBridge();
-      const ctrl = new PermissionController(fake.bridge);
+      const ctrl = new PermissionController(fake.bridge, fake.host);
       ctrl.setPolicy(policy);
 
       // 先对一个普通调用登记会话授权，随后再配置宽泛的静态白名单。
@@ -213,7 +223,7 @@ describe('PermissionController 会话级放行 × 危险命令 denylist', () => 
 
   it('allow-session 后普通 bash 命令自动放行（不弹审批）', async () => {
     const fake = makeFakeBridge();
-    const ctrl = new PermissionController(fake.bridge);
+    const ctrl = new PermissionController(fake.bridge, fake.host);
     ctrl.setPolicy('auto-safe');
     await allowBashForSession(ctrl, fake);
 
@@ -224,7 +234,7 @@ describe('PermissionController 会话级放行 × 危险命令 denylist', () => 
 
   it('allow-session 后 rm -rf 仍强制弹审批（危险命令不静默放行）', async () => {
     const fake = makeFakeBridge();
-    const ctrl = new PermissionController(fake.bridge);
+    const ctrl = new PermissionController(fake.bridge, fake.host);
     ctrl.setPolicy('auto-safe');
     await allowBashForSession(ctrl, fake);
 
@@ -235,7 +245,7 @@ describe('PermissionController 会话级放行 × 危险命令 denylist', () => 
 
   it('allow-session 后 sudo / dd / mkfs 均强制弹审批', async () => {
     const fake = makeFakeBridge();
-    const ctrl = new PermissionController(fake.bridge);
+    const ctrl = new PermissionController(fake.bridge, fake.host);
     ctrl.setPolicy('auto-safe');
     await allowBashForSession(ctrl, fake);
 
@@ -251,7 +261,7 @@ describe('PermissionController 会话级放行 × 危险命令 denylist', () => 
 
   it('危险命令审批通过后本次执行（allow 决策），下一条危险命令仍弹审批', async () => {
     const fake = makeFakeBridge();
-    const ctrl = new PermissionController(fake.bridge);
+    const ctrl = new PermissionController(fake.bridge, fake.host);
     ctrl.setPolicy('auto-safe');
     await allowBashForSession(ctrl, fake);
 
@@ -278,7 +288,7 @@ describe('PermissionController 会话级放行 × 危险命令 denylist', () => 
 
   it('危险命令在普通审批路径也携带 danger 标识（ask-all 首次审批）', async () => {
     const fake = makeFakeBridge();
-    const ctrl = new PermissionController(fake.bridge);
+    const ctrl = new PermissionController(fake.bridge, fake.host);
     ctrl.setPolicy('ask-all');
 
     const p = ctrl.gateForTest('bash', { command: 'dd if=/dev/zero of=/dev/sda' });
@@ -291,7 +301,7 @@ describe('PermissionController 会话级放行 × 危险命令 denylist', () => 
 
   it('allow-all 不做危险检测（yolo 模式保持原语义）', async () => {
     const fake = makeFakeBridge();
-    const ctrl = new PermissionController(fake.bridge);
+    const ctrl = new PermissionController(fake.bridge, fake.host);
     ctrl.setPolicy('allow-all');
     const r = await runGate(ctrl, fake, 'bash', { command: 'rm -rf /' });
     expect(r.pushed).toBe(false);

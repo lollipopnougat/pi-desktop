@@ -6,11 +6,18 @@
  */
 import { useEffect, useState } from 'react';
 import { usePiStore } from '../../store/pi-store';
+import { useShallow } from 'zustand/react/shallow';
 import { t } from '../../i18n/zh';
 import Icon from '../common/Icon';
 
 export default function GoalEditDialog() {
-  const { goalEditDialogOpen, goalSnapshot, setGoalEditDialogOpen } = usePiStore();
+  const { goalEditDialogOpen, goalSnapshot, setGoalEditDialogOpen } = usePiStore(
+    useShallow((s) => ({
+      goalEditDialogOpen: s.goalEditDialogOpen,
+      goalSnapshot: s.goalSnapshot,
+      setGoalEditDialogOpen: s.setGoalEditDialogOpen
+    }))
+  );
   const [text, setText] = useState('');
   const [submitting, setSubmitting] = useState(false);
 

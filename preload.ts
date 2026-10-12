@@ -13,7 +13,7 @@ const piAPI = {
   prompt: (text: string, opts?: any) => ipcRenderer.invoke('pi:prompt', text, opts),
   steer: (text: string) => ipcRenderer.invoke('pi:steer', text),
   followUp: (text: string) => ipcRenderer.invoke('pi:followUp', text),
-  abort: () => ipcRenderer.invoke('pi:abort'),
+  abort: (sessionKey?: string | null) => ipcRenderer.invoke('pi:abort', sessionKey),
   clearQueue: () => ipcRenderer.invoke('pi:clearQueue'),
   /** 撤回单条排队消息到聊天框（clearQueue + 其余重新入队） */
   revokeQueuedMessage: (kind: 'steering' | 'followUp', index: number) =>
@@ -44,6 +44,16 @@ const piAPI = {
   deleteSession: (sessionPath: string) => ipcRenderer.invoke('pi:deleteSession', sessionPath),
   removeProject: (cwd: string) => ipcRenderer.invoke('pi:removeProject', cwd),
   listSessions: () => ipcRenderer.invoke('pi:listSessions'),
+  /** 所有会话槽的状态投影（在跑/未读/等待审批）：侧栏徽标用 */
+  getSessionSlots: () => ipcRenderer.invoke('pi:getSessionSlots'),
+  /** 槽状态变化推送（主进程节流 ~120ms） */
+  onSessionSlots: (cb: (payload: { focusedKey: string; slots: any[] }) => void) => {
+    const handler = (_e: unknown, payload: { focusedKey: string; slots: any[] }) => cb(payload);
+    ipcRenderer.on('pi:sessionSlots', handler);
+    return () => {
+      ipcRenderer.off('pi:sessionSlots', handler);
+    };
+  },
   getTree: () => ipcRenderer.invoke('pi:getTree'),
   getSessionEntry: (entryId: string) => ipcRenderer.invoke('pi:getSessionEntry', entryId),
   navigateTree: (id: string, summarize?: boolean) =>
@@ -151,6 +161,8 @@ const piAPI = {
   readLogTail: (channel: string, maxLines?: number) =>
     ipcRenderer.invoke('pi:readLogTail', channel, maxLines),
   clearLogs: () => ipcRenderer.invoke('pi:clearLogs'),
+  openLogFile: (name: string) => ipcRenderer.invoke('pi:openLogFile', name),
+  deleteLogFile: (name: string) => ipcRenderer.invoke('pi:deleteLogFile', name),
 
   // === Skill 管理 ===
   getSkills: () => ipcRenderer.invoke('pi:getSkills'),
@@ -199,7 +211,9 @@ const piAPI = {
   saveDialog: (opts: { title?: string; defaultPath?: string; filters?: any[] }) =>
     ipcRenderer.invoke('pi:saveDialog', opts),
   setPlanMode: (enabled: boolean) => ipcRenderer.invoke('pi:setPlanMode', enabled),
-  askUserResponse: (answers: any[] | null) => ipcRenderer.invoke('pi:askUserResponse', answers),
+  getPendingInteractions: () => ipcRenderer.invoke('pi:getPendingInteractions'),
+  askUserResponse: (sessionId: string, answers: any[] | null) =>
+    ipcRenderer.invoke('pi:askUserResponse', sessionId, answers),
 
   // === 权限沙箱 ===
   getPermissionPolicy: () => ipcRenderer.invoke('pi:getPermissionPolicy'),

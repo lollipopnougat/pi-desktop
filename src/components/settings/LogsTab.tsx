@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Icon from '../common/Icon';
 import Switch from '../common/Switch';
 import Dropdown from '../common/Dropdown';
@@ -43,7 +43,7 @@ function formatTime(ms: number): string {
  * 四个区块：
  * 1. 总开关 / 等级 / 保留天数（存 ui-config.json 的 logConfig，改完立即生效）
  * 2. 按功能开关（决策模型 / 助手模型 / 工具 / 审批 / 应用）
- * 3. 日志文件列表（大小、时间）+ 清除
+ * 3. 日志文件列表（按功能分组折叠，每项可打开/删除）+ 清除
  * 4. 最近日志预览（按功能查看当天最后若干行）
  *
  * 每项改动都直接落盘（无「保存」按钮）：与权限策略等设置一致，避免用户以为改了却没生效。
@@ -61,6 +61,9 @@ export default function LogsTab() {
   const [lines, setLines] = useState<string[]>([]);
 
   const [confirmClear, setConfirmClear] = useState(false);
+  const [confirmDeleteFile, setConfirmDeleteFile] = useState<LogFileInfo | null>(null);
+  /** 分组折叠状态：只有用户主动收起的组才记为 true，缺省即展开 */
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
   const refreshPreview = useCallback(async (channel: LogChannelId) => {
     try {
@@ -93,6 +96,62 @@ export default function LogsTab() {
   useEffect(() => {
     void refreshPreview(preview);
   }, [preview, refreshPreview]);
+
+  /**
+   * 按功能分组（顺序与上方「按功能开关」一致，见 LOG_CHANNELS）。
+   * 文件里出现但配置里没有的功能追加在末尾——不然它们会从列表里静默消失。
+   */
+  const grouped = useMemo(() => {
+    const byChannel = new Map<string, LogFileInfo[]>();
+    for (const file of files) {
+      const list = byChannel.get(file.channel);
+      if (list) list.push(file);
+      else byChannel.set(file.channel, [file]);
+    }
+    const extra = [...byChannel.keys()].filter((c) => !channels.includes(c as LogChannelId));
+    return [...channels, ...extra]
+      .filter((channel) => byChannel.has(channel))
+      .map((channel) => ({
+        channel,
+        label: CHANNEL_TEXT[channel]?.label ?? channel,
+        files: byChannel.get(channel) ?? []
+      }));
+  }, [files, channels]);
+
+  const toggleGroup = useCallback((channel: string) => {
+    setCollapsedGroups((prev) => ({ ...prev, [channel]: !prev[channel] }));
+  }, []);
+
+  const handleOpenFile = useCallback(
+    async (file: LogFileInfo) => {
+      try {
+        const res = await window.pi.openLogFile(file.name);
+        if (!res.ok) showToast(res.error ?? t.logsFileOpenFailed(file.name), { variant: 'error' });
+      } catch (err) {
+        showToast(String(err), { variant: 'error' });
+      }
+    },
+    [showToast]
+  );
+
+  const handleDeleteFile = useCallback(
+    async (file: LogFileInfo) => {
+      setConfirmDeleteFile(null);
+      try {
+        const res = await window.pi.deleteLogFile(file.name);
+        if (!res.ok) {
+          showToast(res.error ?? t.logsSaveFailed, { variant: 'error' });
+          return;
+        }
+        showToast(t.logsFileDeleted(file.name), { variant: 'success' });
+        await load();
+        await refreshPreview(preview);
+      } catch (err) {
+        showToast(String(err), { variant: 'error' });
+      }
+    },
+    [load, preview, refreshPreview, showToast]
+  );
 
   /**
    * 保存（部分字段）→ 立即生效。
@@ -305,26 +364,80 @@ export default function LogsTab() {
           </div>
         ) : (
           <div className="space-y-1">
-            {files.map((file) => (
-              <div
-                key={file.name}
-                className="flex items-center justify-between gap-3 rounded border border-od-border bg-od-bg-alt px-3 py-1.5 text-xs"
-              >
-                <span
-                  className="min-w-0 flex-1 truncate font-mono text-od-text-bright"
-                  title={file.name}
-                >
-                  {file.name}
-                </span>
-                {file.rotated && (
-                  <span className="shrink-0 rounded bg-od-yellow/20 px-1.5 py-0.5 text-[0.7rem] text-od-yellow">
-                    {t.logsRotated}
-                  </span>
-                )}
-                <span className="shrink-0 text-od-text-dim">{formatBytes(file.sizeBytes)}</span>
-                <span className="shrink-0 text-od-text-dim">{formatTime(file.mtimeMs)}</span>
-              </div>
-            ))}
+            {grouped.map((group) => {
+              const open = !collapsedGroups[group.channel];
+              const totalBytes = group.files.reduce((sum, file) => sum + file.sizeBytes, 0);
+              return (
+                <div key={group.channel}>
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group.channel)}
+                    aria-expanded={open}
+                    className="flex w-full items-center gap-2 rounded border border-od-border bg-od-bg-alt px-3 py-1.5 text-left hover:bg-od-bg-hover"
+                  >
+                    <Icon
+                      name={open ? 'chevronDown' : 'chevronRight'}
+                      className="w-3 shrink-0 text-od-text-dim"
+                    />
+                    <span className="text-xs text-od-text-bright">{group.label}</span>
+                    <span className="font-mono text-[0.7rem] text-od-text-dim">
+                      {group.channel}
+                    </span>
+                    <span className="ml-auto shrink-0 text-[0.7rem] text-od-text-dim">
+                      {t.logsGroupFiles(group.files.length)} · {formatBytes(totalBytes)}
+                    </span>
+                  </button>
+                  {open && (
+                    <div className="mt-1 space-y-1 pl-3">
+                      {group.files.map((file) => (
+                        <div
+                          key={file.name}
+                          className="flex items-center justify-between gap-3 rounded border border-od-border bg-od-bg-alt px-3 py-1.5 text-xs"
+                        >
+                          <span
+                            className="min-w-0 flex-1 truncate font-mono text-od-text-bright"
+                            title={file.name}
+                          >
+                            {file.name}
+                          </span>
+                          {file.rotated && (
+                            <span className="shrink-0 rounded bg-od-yellow/20 px-1.5 py-0.5 text-[0.7rem] text-od-yellow">
+                              {t.logsRotated}
+                            </span>
+                          )}
+                          <span className="shrink-0 text-od-text-dim">
+                            {formatBytes(file.sizeBytes)}
+                          </span>
+                          <span className="shrink-0 text-od-text-dim">
+                            {formatTime(file.mtimeMs)}
+                          </span>
+                          <span className="flex shrink-0 items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => void handleOpenFile(file)}
+                              title={t.logsFileOpen}
+                              className="flex items-center gap-1 rounded bg-od-accent/15 px-2 py-0.5 text-xs text-od-accent hover:bg-od-accent/25"
+                            >
+                              <Icon name="external" className="w-3" />
+                              {t.logsFileOpen}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteFile(file)}
+                              title={t.logsFileDelete}
+                              className="flex items-center gap-1 rounded bg-od-red/15 px-2 py-0.5 text-xs text-od-red hover:bg-od-red/25"
+                            >
+                              <Icon name="delete" className="w-3" />
+                              {t.logsFileDelete}
+                            </button>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
         <div className="mt-2 text-[0.7rem] leading-relaxed text-od-text-dim">{t.logsFilesHint}</div>
@@ -387,6 +500,19 @@ export default function LogsTab() {
         danger
         onConfirm={() => void handleClear()}
         onClose={() => setConfirmClear(false)}
+      />
+
+      <ConfirmDialog
+        open={confirmDeleteFile !== null}
+        title={t.logsFileDeleteTitle}
+        message={t.logsFileDeleteMessage(confirmDeleteFile?.name ?? '')}
+        confirmText={t.logsFileDelete}
+        danger
+        onConfirm={() => {
+          const file = confirmDeleteFile;
+          if (file) void handleDeleteFile(file);
+        }}
+        onClose={() => setConfirmDeleteFile(null)}
       />
     </>
   );

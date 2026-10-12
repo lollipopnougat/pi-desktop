@@ -485,7 +485,12 @@ function makeFakeBridge(toolDescription?: string) {
       return true;
     }
   } as any;
-  return { bridge, requests };
+  const host = {
+    current: () => bridge.session,
+    cwd: () => bridge.cwd,
+    sendSessionEvent: (channel: string, request: unknown) => bridge.sendSessionEvent(channel, request)
+  };
+  return { bridge, host, requests };
 }
 
 /** fake ModelRuntime：记录调用参数，默认返回 safe 判定 */
@@ -535,7 +540,7 @@ async function runGate(
 
 function makeController(runtime: unknown, toolDescription?: string, config?: unknown) {
   const fake = makeFakeBridge(toolDescription);
-  const ctrl = new PermissionController(fake.bridge);
+  const ctrl = new PermissionController(fake.bridge, fake.host);
   fake.bridge.modelRuntime = runtime;
   ctrl.setPolicy('classifier-auto');
   ctrl.setClassifierConfig(config ?? { providerId: 'local-kev', modelId: 'm' });

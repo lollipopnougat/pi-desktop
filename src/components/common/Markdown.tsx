@@ -1,40 +1,91 @@
 import { useMemo, useRef, useEffect } from 'react';
-import { marked } from 'marked';
+import { Marked } from 'marked';
 import DOMPurify from 'dompurify';
 import hljs from 'highlight.js';
 import { copyToClipboard } from '../../utils/clipboard';
 import { usePiStore } from '../../store/pi-store';
-
-// 配置 marked：GFM、换行转 <br>
-marked.setOptions({
-  gfm: true,
-  breaks: true
-});
+import { splitMarkdownBlocks } from '../../utils/markdown-blocks';
 
 /**
- * 自定义 renderer：代码块用 highlight.js 做语法高亮
+ * 代码块渲染器工厂。highlight=false 时只转义不高亮：流式输出里正在增长的那个代码块
+ * 每帧都重跑一遍 highlightAuto 是渲染端最贵的一步（毫秒级 × 每秒几十帧）。
+ * 闭合后的块会以 highlight=true 再渲一次（见 buildHtml），因此只是延后、不会缺失。
  */
-const renderer = new marked.Renderer();
-renderer.code = (token: any) => {
-  const lang = (token.lang || '').trim();
-  const code = token.text || '';
-  let highlighted: string;
-  let displayLang = lang || 'text';
-  try {
-    if (lang && hljs.getLanguage(lang)) {
-      highlighted = hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
-    } else {
-      // 自动检测语言
-      const auto = hljs.highlightAuto(code);
-      highlighted = auto.value;
-      if (auto.language) displayLang = auto.language;
+
+/**
+ * highlightAuto 的候选语言子集。实测（对全量历史会话跑一遍 hljs）：431 个代码块里
+ * 只有 10 个没有语言标注，却占掉 86% 的高亮耗时——最坏的一个 239 字符的目录树花了 187ms，
+ * 一个 14 字符的中文片段花了 27ms，因为 highlightAuto 会拿全部 ~190 种语言逐个试。
+ * 限制成常用子集后最坏用例降到几毫秒（未命中的按纯文本渲染，不影响正确性）。
+ */
+const AUTO_LANGS = [
+  'bash',
+  'shell',
+  'javascript',
+  'typescript',
+  'json',
+  'python',
+  'go',
+  'rust',
+  'java',
+  'c',
+  'cpp',
+  'csharp',
+  'php',
+  'ruby',
+  'swift',
+  'kotlin',
+  'xml',
+  'css',
+  'scss',
+  'sql',
+  'yaml',
+  'toml',
+  'ini',
+  'diff',
+  'dockerfile',
+  'markdown'
+];
+
+/** 超大代码块不做高亮：hljs 在这种规模上可能要几百毫秒，而颜色收益很小 */
+const MAX_HIGHLIGHT_CHARS = 30_000;
+
+function createCodeRenderer(highlight: boolean) {
+  return {
+    code(token: any) {
+      const lang = (token.lang || '').trim();
+      const code = token.text || '';
+      let body: string;
+      let displayLang = lang || 'text';
+      if (!highlight || code.length > MAX_HIGHLIGHT_CHARS) {
+        body = escapeHtml(code);
+      } else {
+        try {
+          if (lang && hljs.getLanguage(lang)) {
+            body = hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
+          } else {
+            // 自动检测语言（限定候选子集，见 AUTO_LANGS）
+            const auto = hljs.highlightAuto(code, AUTO_LANGS);
+            body = auto.value;
+            if (auto.language) displayLang = auto.language;
+          }
+        } catch {
+          body = escapeHtml(code);
+        }
+      }
+      return `<pre class="md-code-block hljs" data-lang="${escapeAttr(displayLang)}"><code class="hljs language-${escapeAttr(lang || displayLang)}">${body}</code></pre>`;
     }
-  } catch {
-    highlighted = escapeHtml(code);
-  }
-  return `<pre class="md-code-block hljs" data-lang="${escapeAttr(displayLang)}"><code class="hljs language-${escapeAttr(lang || displayLang)}">${highlighted}</code></pre>`;
-};
-marked.use({ renderer });
+  };
+}
+
+/** 两个独立实例：marked 的 renderer 挂在实例默认值上，不能按调用切换 */
+const markedHighlight = new Marked();
+markedHighlight.setOptions({ gfm: true, breaks: true });
+markedHighlight.use({ renderer: createCodeRenderer(true) });
+
+const markedPlain = new Marked();
+markedPlain.setOptions({ gfm: true, breaks: true });
+markedPlain.use({ renderer: createCodeRenderer(false) });
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -43,19 +94,56 @@ function escapeAttr(s: string): string {
   return s.replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }
 
+function renderMarkdownHtml(content: string, highlight: boolean): string {
+  const renderer = highlight ? markedHighlight : markedPlain;
+  const raw = renderer.parse(content || '', { async: false }) as string;
+  return DOMPurify.sanitize(raw, {
+    ADD_ATTR: ['data-lang', 'class']
+  });
+}
+
+// 参考式链接定义（`[label]: url`）是文档级作用域，分块解析会解析不到 → 退化为整篇解析
+const REFERENCE_DEF_RE = /^\s{0,3}\[[^\]\n]+\]:\s*\S/m;
+
+// 分块渲染结果缓存：流式期间每个已闭合的块只解析一次；上限内不淘汰（只服务当前流式回合）
+const RENDER_CACHE = new Map<string, string>();
+const RENDER_CACHE_MAX = 500;
+
+function cachedRenderBlock(block: string, highlight: boolean): string {
+  const key = `${highlight ? 'h' : 'p'}\u0000${block}`;
+  const hit = RENDER_CACHE.get(key);
+  if (hit !== undefined) return hit;
+  if (RENDER_CACHE.size >= RENDER_CACHE_MAX) RENDER_CACHE.clear();
+  const html = renderMarkdownHtml(block, highlight);
+  RENDER_CACHE.set(key, html);
+  return html;
+}
+
+/**
+ * 流式内容走分块解析 + 块级缓存，每帧只重解析还在增长的最后一块；
+ * 非流式（历史消息、导出、预览）仍整篇解析，语义与改造前完全一致。
+ */
+function buildHtml(content: string, streaming: boolean): string {
+  if (!streaming) return renderMarkdownHtml(content, true);
+  if (REFERENCE_DEF_RE.test(content)) return renderMarkdownHtml(content, false);
+  const blocks = splitMarkdownBlocks(content);
+  // 单块且在增长：直接不高亮（多块时前面的块已闭合，照常高亮并进缓存）
+  if (blocks.length <= 1) return renderMarkdownHtml(content, false);
+  const last = blocks.length - 1;
+  return blocks.map((block, index) => cachedRenderBlock(block, index < last)).join('');
+}
+
 export default function Markdown({
   content,
-  openLinksInBrowser = false
+  openLinksInBrowser = false,
+  streaming = false
 }: {
   content: string;
   openLinksInBrowser?: boolean;
+  /** 该内容仍在流式生成中：分块解析 + 延迟语法高亮（见 buildHtml） */
+  streaming?: boolean;
 }) {
-  const html = useMemo(() => {
-    const raw = marked.parse(content || '', { async: false }) as string;
-    return DOMPurify.sanitize(raw, {
-      ADD_ATTR: ['data-lang', 'class']
-    });
-  }, [content]);
+  const html = useMemo(() => buildHtml(content || '', streaming), [content, streaming]);
 
   const containerRef = useRef<HTMLDivElement>(null);
 

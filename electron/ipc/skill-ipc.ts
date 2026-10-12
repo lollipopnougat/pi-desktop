@@ -13,9 +13,8 @@ export interface SkillContext extends PiBridgeContext {
   readonly win: any;
 }
 
-/** 获取 ResourceLoader */
-function getLoader(ctx: SkillContext): any | null {
-  const session = ctx.getSession();
+/** 获取 ResourceLoader（session 由 handler 在入口经 sessionFor 解析后传入） */
+function getLoader(session: any): any | null {
   return session.resourceLoader || session.agent?.state?.resourceLoader || null;
 }
 
@@ -81,7 +80,7 @@ function rewriteSkillDisableInvocation(content: string, disable: boolean): strin
 export function registerSkillIpc(ctx: SkillContext) {
   /** 强制重新加载技能资源（重新扫描技能目录），返回最新技能列表 */
   ipcMain.handle('pi:reloadSkills', async () => {
-    const loader = getLoader(ctx);
+    const loader = getLoader(ctx.sessionFor().requireSession());
     if (!loader) return { skills: [], diagnostics: [] };
     try {
       await loader.reload?.();
@@ -106,7 +105,7 @@ export function registerSkillIpc(ctx: SkillContext) {
   });
 
   ipcMain.handle('pi:getSkills', async () => {
-    const loader = getLoader(ctx);
+    const loader = getLoader(ctx.sessionFor().requireSession());
     if (!loader) return { skills: [], diagnostics: [] };
     try {
       const { skills, diagnostics } = loader.getSkills();
@@ -146,7 +145,7 @@ export function registerSkillIpc(ctx: SkillContext) {
    */
   ipcMain.handle('pi:getProjectSkills', async (_e, targetCwd?: string) => {
     const skillCwd = targetCwd || ctx.cwd;
-    const loader = getLoader(ctx);
+    const loader = getLoader(ctx.sessionFor().requireSession());
     if (!loader) return { skills: [], diagnostics: [] };
     try {
       const { skills, diagnostics } = loader.getSkills();
@@ -176,7 +175,7 @@ export function registerSkillIpc(ctx: SkillContext) {
   });
 
   ipcMain.handle('pi:readSkillFile', async (_e, skillName: string) => {
-    const loader = getLoader(ctx);
+    const loader = getLoader(ctx.sessionFor().requireSession());
     if (!loader) throw new Error('loader unavailable');
     const { skills } = loader.getSkills();
     const s = (skills || []).find((x: any) => x.name === skillName);
@@ -187,7 +186,7 @@ export function registerSkillIpc(ctx: SkillContext) {
   });
 
   ipcMain.handle('pi:writeSkillFile', async (_e, skillName: string, content: string) => {
-    const loader = getLoader(ctx);
+    const loader = getLoader(ctx.sessionFor().requireSession());
     if (!loader) throw new Error('loader unavailable');
     const { skills } = loader.getSkills();
     const s = (skills || []).find((x: any) => x.name === skillName);
@@ -201,7 +200,7 @@ export function registerSkillIpc(ctx: SkillContext) {
   });
 
   ipcMain.handle('pi:deleteSkill', async (_e, skillName: string) => {
-    const loader = getLoader(ctx);
+    const loader = getLoader(ctx.sessionFor().requireSession());
     if (!loader) throw new Error('loader unavailable');
     const { skills } = loader.getSkills();
     const s = (skills || []).find((x: any) => x.name === skillName);
@@ -233,7 +232,7 @@ export function registerSkillIpc(ctx: SkillContext) {
   });
 
   ipcMain.handle('pi:toggleSkill', async (_e, skillName: string, disable: boolean) => {
-    const loader = getLoader(ctx);
+    const loader = getLoader(ctx.sessionFor().requireSession());
     if (!loader) throw new Error('loader unavailable');
     const { skills } = loader.getSkills();
     const s = (skills || []).find((x: any) => x.name === skillName);
@@ -386,7 +385,7 @@ export function registerSkillIpc(ctx: SkillContext) {
 
     // 重新加载技能
     try {
-      const loader = getLoader(ctx);
+      const loader = getLoader(ctx.sessionFor().requireSession());
       await loader?.reload?.();
     } catch {}
     return { ok: true, name: skillName, target: targetDir };

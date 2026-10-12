@@ -358,3 +358,29 @@ export function clearLogs(): number {
   }
   return removed;
 }
+
+/**
+ * 日志文件名 → 目录内的绝对路径。
+ *
+ * 只接受 `channel-YYYY-MM-DD.log` / `.log.N` 形态：渲染进程传来的名字一律不可信，
+ * 出现路径分隔符或 `..` 时返回 null（防目录穿越），解析后还必须仍在日志目录内。
+ */
+export function resolveLogFilePath(name: string): string | null {
+  if (typeof name !== 'string' || !name) return null;
+  if (!/^[A-Za-z0-9._-]+\.log(\.\d+)?$/u.test(name) || name.includes('..')) return null;
+  const dir = path.resolve(LOGS_DIR);
+  const full = path.resolve(dir, name);
+  return path.dirname(full) === dir ? full : null;
+}
+
+/** 删除单个日志文件，返回是否成功；失败静默 */
+export function deleteLogFile(name: string): boolean {
+  const full = resolveLogFilePath(name);
+  if (!full) return false;
+  try {
+    fs.rmSync(full, { force: true });
+    return true;
+  } catch {
+    return false;
+  }
+}

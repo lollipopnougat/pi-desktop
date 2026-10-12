@@ -14,6 +14,7 @@ import { randomUUID } from 'crypto';
 import { projectIdentity } from './config';
 import { listCandidates, historyForProject, legacyProjects } from './review';
 import type { PiBridge } from '../pi-bridge';
+import type { SessionHost } from '../session-slot';
 import {
   readMemoryConfig,
   writeMemoryConfig,
@@ -78,6 +79,8 @@ export interface MemoryInjectionInfo {
 
 export class MemoryController {
   private piBridge: PiBridge;
+  /** 所服务的会话（Stage 0 = 焦点槽；多会话阶段按槽注入） */
+  private host: SessionHost;
   /** 冻结快照：session_start 时生成，会话期间不变（保护 prompt cache） */
   private frozenInjection: string | null = null;
   /** 冻结快照的分段明细（与 frozenInjection 同源，供记忆面板展示） */
@@ -94,7 +97,7 @@ export class MemoryController {
   private disposed = false;
 
   getProject() {
-    return projectIdentity(this.piBridge.cwd);
+    return projectIdentity(this.host.cwd());
   }
   getProjectId(): string {
     return this.getProject().id;
@@ -109,8 +112,9 @@ export class MemoryController {
     this.clearSnapshot();
   }
 
-  constructor(piBridge: PiBridge) {
+  constructor(piBridge: PiBridge, host: SessionHost) {
     this.piBridge = piBridge;
+    this.host = host;
   }
 
   // ─── 配置 ───
@@ -134,7 +138,7 @@ export class MemoryController {
 
   getProjectName(): string {
     // 优先当前注入冻结的项目名（与会话一致），否则取当前 cwd
-    return this.frozenProjectName || projectNameFromCwd(this.piBridge.cwd);
+    return this.frozenProjectName || projectNameFromCwd(this.host.cwd());
   }
 
   // ─── 注入快照（extension 调用） ───
@@ -145,7 +149,7 @@ export class MemoryController {
    * 避免每轮 systemPrompt 变化打掉 provider prefix cache。
    */
   freezeSnapshot(): void {
-    this.frozenProjectName = projectNameFromCwd(this.piBridge.cwd);
+    this.frozenProjectName = projectNameFromCwd(this.host.cwd());
     this.frozenAt = new Date().toISOString();
     try {
       const config = readMemoryConfig();
@@ -218,7 +222,7 @@ export class MemoryController {
         if (m) return { ...config.extractModel, model: m };
         // 配置的模型失效则回退当前模型
       }
-      const cur = this.piBridge.getSession?.()?.model;
+      const cur = this.host.current()?.model;
       if (cur) return { provider: cur.provider, modelId: cur.id, model: cur };
       const avail = mr.getAvailableSnapshot?.() ?? [];
       const first = avail[0];
@@ -288,7 +292,7 @@ export class MemoryController {
     const task = (async () => {
       try {
         const result = await runExtraction(
-          this.piBridge.cwd,
+          this.host.cwd(),
           project.name,
           this.makeCompleteFn(),
           (p) => this.emitProgress({ kind: 'extraction', ...p }),
@@ -344,7 +348,7 @@ export class MemoryController {
   getStatus() {
     const config = readMemoryConfig();
     const state = readState();
-    const projectName = projectNameFromCwd(this.piBridge.cwd);
+    const projectName = projectNameFromCwd(this.host.cwd());
     // 失败会话：水位线里带 error 的条目（再点提取会重试它们）
     const projectId = this.getProjectId();
     const failedSessions = listFailedSessions(state, projectId);

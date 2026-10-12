@@ -20,12 +20,18 @@ const { writeState } = await import('../../electron/memory/pipeline');
 const bridgeStub = {
   cwd: '/tmp/ctrl-proj',
   win: null,
-  modelRuntime: null,
-  getSession: () => null
+  modelRuntime: null
 } as never;
 
+/** 控制器只通过 SessionHost 访问会话；本测试不需要真实会话（快照注入串不依赖会话内容） */
+const hostStub = {
+  current: () => null,
+  cwd: () => '/tmp/ctrl-proj',
+  sendSessionEvent: () => true
+};
+
 function newController() {
-  return new MemoryController(bridgeStub);
+  return new MemoryController(bridgeStub, hostStub);
 }
 
 function resetMemoryDir() {

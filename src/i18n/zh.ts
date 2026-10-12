@@ -107,7 +107,6 @@ export const t = {
   stopRunningActionNew: '新建会话',
   stopRunningActionFork: '分支/切换节点',
   stopRunningActionCwd: '切换项目目录',
-  stopRunningActionExport: '导出会话',
   stopRunningActionQuit: '退出应用',
   noSessions: '暂无会话',
   // 会话排序
@@ -127,7 +126,18 @@ export const t = {
   ctxDeleteSession: '删除会话',
   renamePrompt: '请输入新的会话名称',
   deleteConfirm: (name: string) => `确定删除会话「${name}」？该操作不可恢复。`,
+  deleteActiveConfirm: (name: string) =>
+    `确定删除当前会话「${name}」？会先停止正在进行的回复，并切换到一个新会话；该操作不可恢复。`,
   deleteSession: '删除会话',
+  // 后台运行徽标（多会话：切走的会话继续跑）
+  sessionRunningBadge: '后台运行中',
+  sessionUnreadBadge: '有新内容',
+  sessionPendingApproval: '等待审批',
+  sessionQueuedBadge: '排队中（等待并发空位）',
+  promptQueued: '同时最多 3 个会话在运行，本轮已排队，空出后会立即发送',
+  sessionNotSavedYet: '尚未创建会话文件：发送第一条消息后即可重命名/导出/删除',
+  sessionUnnamed: '未命名会话',
+  stopBackgroundSession: '停止该会话的本轮执行',
   sessionDeleteFail: (err: string) => `删除失败: ${err}`,
   delete: '删除',
   exportSaved: (p: string) => `已导出到: ${p}`,
@@ -178,6 +188,9 @@ export const t = {
   chatEmptyTitle: '',
   welcomeTitle: 'Pi Desktop',
   welcomeHint: '发送消息开始编码',
+  piLogoAnimationPlay: '播放 Pi 立体方块动画',
+  piLogoAnimationClose: '关闭 Pi 立体方块动画',
+  piLogoAnimationHint: '点击画面或按 Esc 返回',
   assistant: '助手',
   assistantStreaming: '助手 回答中…',
   thinking: '思考',
@@ -376,6 +389,9 @@ export const t = {
   switchQueuedToFollowUp: '切换排队消息',
   /** 引导消息 chip 上的互转按钮（当前为排队消息 → 显示“切换引导消息”） */
   switchQueuedToSteer: '切换引导消息',
+  /** 同项目已有其他会话在跑时，输入框上蒙层的提示与放行按钮 */
+  sameProjectBusyNotice: '当前已经有其他会话正在此项目中工作，在此项目中继续会话可能会互相干扰',
+  sameProjectBusyContinue: '仍然继续',
 
   // 模型选择器
   noModel: '未选择模型',
@@ -413,6 +429,8 @@ export const t = {
   contextDetailMessagesLabel: '条消息',
   contextDetailCost: '成本',
   contextDetailCacheHit: '缓存命中率',
+  contextDetailRefresh: '刷新上下文详情',
+  contextDetailUpdatedAt: (time: string) => `更新于 ${time}`,
 
   // 代码面板
   explorer: '资源管理器',
@@ -790,6 +808,13 @@ export const t = {
   logsFilesEmpty: '暂无日志文件',
   logsFilesHint: '单文件超过 8MB 会轮转成 .1；过期文件在下次写入时删除',
   logsRotated: '轮转',
+  logsFileOpen: '打开',
+  logsFileDelete: '删除',
+  logsFileOpenFailed: (name: string) => `无法打开 ${name}`,
+  logsFileDeleted: (name: string) => `已删除 ${name}`,
+  logsFileDeleteTitle: '删除日志文件？',
+  logsFileDeleteMessage: (name: string) => `将删除 ${name}，不可恢复。`,
+  logsGroupFiles: (count: number) => `${count} 个文件`,
   logsClear: '清除日志',
   logsClearTitle: '清除全部日志？',
   logsClearMessage: '将删除 ~/.pi-desktop/logs 下的所有日志文件（含轮转文件），不可恢复。',
@@ -1066,6 +1091,9 @@ export const t = {
   collapseToolCalls: '默认折叠工具调用',
   collapseToolCallsDesc:
     '将连续工具调用及其思考过程收起为摘要，展开后可逐项查看参数和输出；关闭后默认显示工具列表',
+  sameProjectBusyWarn: '同项目并发提醒',
+  sameProjectBusyWarnDesc:
+    '同一项目已有其他会话在运行时，输入框会盖一层提醒蒙层（需点「仍然继续」才能继续聊天）；关闭后不再提醒',
   terminalFontFamily: '字体',
   terminalFontFamilyDesc: '终端使用的等宽字体，多个用逗号分隔',
   terminalFontSize: '字号',

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { usePiStore } from '../../store/pi-store';
+import { useShallow } from 'zustand/react/shallow';
 import McpIcon from '../common/McpIcon';
 import Icon from '../common/Icon';
 import { t } from '../../i18n/zh';
@@ -24,7 +25,9 @@ interface ServerStatus {
  * 通过 /mcp 命令或设置页触发。
  */
 export default function McpStatusModal() {
-  const { mcpStatusOpen, setMcpStatusOpen } = usePiStore();
+  const { mcpStatusOpen, setMcpStatusOpen } = usePiStore(
+    useShallow((s) => ({ mcpStatusOpen: s.mcpStatusOpen, setMcpStatusOpen: s.setMcpStatusOpen }))
+  );
   const [statuses, setStatuses] = useState<ServerStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const isMac = window.pi?.platform === 'darwin';

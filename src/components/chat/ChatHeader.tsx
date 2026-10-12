@@ -7,6 +7,7 @@ import MemoryPanel from './MemoryPanel';
 import SubagentPanel from '../subagents/SubagentPanel';
 import BackgroundTaskPanel from '../background-tasks/BackgroundTaskPanel';
 import { t } from '../../i18n/zh';
+import { subscribeSessionRefresh } from '../../lib/session-refresh';
 
 /**
  * 聊天区域顶部标题栏：展示当前会话名称，并提供会话树入口。
@@ -15,7 +16,7 @@ export default function ChatHeader() {
   const sessionId = usePiStore((s) => s.sessionId);
   const sessionFile = usePiStore((s) => s.sessionFile);
   const sessionLabel = usePiStore((s) => s.sessionLabel);
-  const sessionVersion = usePiStore((s) => s.sessionVersion);
+  const [refreshTick, setRefreshTick] = useState(0);
   const isStreaming = usePiStore((s) => s.isStreaming);
   const setSessionLabel = usePiStore((s) => s.setSessionLabel);
   const treeViewOpen = usePiStore((s) => s.treeViewOpen);
@@ -35,6 +36,9 @@ export default function ChatHeader() {
   const [backgroundTaskOpen, setBackgroundTaskOpen] = useState(false);
   const [reloading, setReloading] = useState(false);
 
+  // 版本驱动的刷新（agent_end…）走共享去抖：与侧栏、会话树合并成一次
+  useEffect(() => subscribeSessionRefresh(() => setRefreshTick((n) => n + 1)), []);
+
   useEffect(() => {
     // 优先用 store 中的 sessionLabel（切换会话时由侧栏即时写入，无需扫盘）
     if (sessionLabel) {
@@ -43,7 +47,7 @@ export default function ChatHeader() {
     }
     // 兜底：sessionLabel 缺失时（如初始化、导航树跳转）才走 listSessions 扫盘
     loadLabel();
-  }, [sessionId, sessionFile, sessionVersion, sessionLabel]);
+  }, [sessionId, sessionFile, refreshTick, sessionLabel]);
 
   const loadLabel = async () => {
     if (!sessionId && !sessionFile) {

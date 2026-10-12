@@ -17,6 +17,7 @@
  * 进 plan 暂停 active goal(ChatInput 已处理)。
  */
 import type { PiBridge } from '../pi-bridge';
+import type { SessionHost } from '../session-slot';
 import { t } from '../../src/i18n/zh';
 import {
   type PlanPhase,
@@ -57,6 +58,8 @@ const PLAN_ONLY_TOOL = 'propose_plan';
 
 export class PlanController {
   private piBridge: PiBridge;
+  /** 所服务的会话（Stage 0 = 焦点槽；多会话阶段按槽注入） */
+  private host: SessionHost;
   private phase: PlanPhase = 'idle';
   /** 进入 planning 前保存的活跃工具列表,退出时恢复 */
   private previousToolNames: string[] | null = null;
@@ -70,8 +73,9 @@ export class PlanController {
   /** 续跑旗标:批准后置 true,扩展 agent_end 钩子消费后清零 */
   private needsContinueFlag = false;
 
-  constructor(piBridge: PiBridge) {
+  constructor(piBridge: PiBridge, host: SessionHost) {
     this.piBridge = piBridge;
+    this.host = host;
   }
 
   get currentPhase(): PlanPhase {
@@ -97,7 +101,7 @@ export class PlanController {
     // 若有 pending 提案,先取消(切走即放弃当前审批)
     this.cancelPending({ approved: false, feedback: '已退出规划模式' });
     try {
-      const session = this.piBridge.getSession();
+      const session = this.host.current();
       if (!session) return;
       // 仅首次进入保存,避免保存被裁剪后的白名单;排除 propose_plan 本身
       // 防止退出时把它又带回标准模式激活集(它是 plan 专用)
@@ -119,7 +123,7 @@ export class PlanController {
     if (this.phase === 'idle') return;
     this.cancelPending({ approved: false, feedback: '已退出规划模式' });
     try {
-      const session = this.piBridge.getSession();
+      const session = this.host.current();
       if (session) {
         const restore = this.previousToolNames ?? session.getAllTools().map((t: any) => t.name);
         session.setActiveToolsByName(restore);
@@ -152,7 +156,7 @@ export class PlanController {
       this.pending = { proposal, resolve };
       this.emit();
       // 通知渲染进程展示评审面板
-      if (!this.piBridge.sendSessionEvent('pi:planProposal', proposal)) {
+      if (!this.host.sendSessionEvent('pi:planProposal', proposal)) {
         this.cancelPending({ approved: false, feedback: t.sessionSwitchCancelled });
       }
     });
@@ -209,7 +213,7 @@ export class PlanController {
 
   private persist(): void {
     try {
-      const session = this.piBridge.getSession();
+      const session = this.host.current();
       const sm = session?.sessionManager;
       if (!sm || typeof sm.appendCustomEntry !== 'function') return;
       const data: PlanStateData = { phase: this.phase };
@@ -218,7 +222,7 @@ export class PlanController {
   }
 
   private emit(): void {
-    this.piBridge.sendSessionEvent('pi:planUpdate', this.getSnapshot());
+    this.host.sendSessionEvent('pi:planUpdate', this.getSnapshot());
   }
 
   getSnapshot(): PlanSnapshot {
@@ -238,7 +242,7 @@ export class PlanController {
     this.previousToolNames = null;
     let restored: PlanPhase = 'idle';
     try {
-      const sm = this.piBridge.getSession()?.sessionManager;
+      const sm = this.host.current()?.sessionManager;
       const entries = sm?.getBranch?.() ?? sm?.getEntries?.() ?? [];
       restored = loadPlanStateFromEntries(entries);
     } catch {}
@@ -249,7 +253,7 @@ export class PlanController {
     //   propose_plan 经 pi.registerTool 注册后默认会进激活集;这里显式过滤,
     //   setActiveToolsByName 会重建 _baseSystemPrompt,propose_plan 文档退出 systemPrompt
     try {
-      const session = this.piBridge.getSession();
+      const session = this.host.current();
       if (session) {
         if (restored === 'planning') {
           // 排除 propose_plan 以免退出时又带回 standard
