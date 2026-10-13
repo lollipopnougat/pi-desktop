@@ -314,3 +314,4 @@ npm run test:coverage         # 覆盖率
 - [pi agent SDK](https://github.com/earendil-works/pi-coding-agent)（`@earendil-works/pi-coding-agent` / `@earendil-works/pi-ai` / `@earendil-works/pi-agent-core`）：MIT
 - [FontAwesome Free](https://fontawesome.com)（`free-solid-svg-icons` / `free-regular-svg-icons`）：图标为 CC BY 4.0、字体为 SIL OFL 1.1、代码为 MIT。本项目界面图标均来自 FontAwesome Free，版权归 Font Awesome 所有
 - 其余依赖（Electron、React、Monaco Editor、xterm.js、node-pty、Tailwind CSS、highlight.js、marked、Zustand 等）为 MIT / Apache-2.0 / BSD / ISC 等宽松许可，完整依赖与许可清单见 `package-lock.json`
+- **打包版安装目录随附完整清单**：`resources/THIRD-PARTY-NOTICES.txt`（Windows NSIS/便携版为安装目录的 `resources` 子目录，macOS 为 `Pi Desktop.app/Contents/Resources`）收录了全部依赖的许可原文，由 `npm run notices` 在构建期生成（`electron:build` 前自动执行，不入版本库）
