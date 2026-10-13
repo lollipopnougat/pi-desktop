@@ -1,0 +1,20 @@
+AGENTS.md
+  h_cc604c9bda8355 281
+electron/pi-bridge.ts
+  h_cc604c9bda8355 12,954-955,959,1103-1138
+package.json
+  h_cc604c9bda8355 3
+tests/session/pi-bridge.test.ts
+  h_cc604c9bda8355 64,78-80,85,88-90,221-237
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2bd41ddc6cc50e1bb3c9bd76b7eb6a84f36c7327",
+  "prompts": {},
+  "humans": {
+    "h_cc604c9bda8355": {
+      "author": "lollipopnougat <ab2defg145@gmail.com>"
+    }
+  }
+}
