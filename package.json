@@ -2,6 +2,7 @@
   "name": "pi-desktop",
   "version": "0.3.7",
   "description": "Pi Desktop App - AI coding assistant powered by pi agent SDK",
+  "license": "MIT",
   "main": "dist-electron/main.js",
   "type": "commonjs",
   "author": "lollipopnougat",
