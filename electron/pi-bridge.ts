@@ -9,6 +9,7 @@ import {
   SessionManager,
   type CreateAgentSessionRuntimeFactory,
   type AgentSessionEvent,
+  type ExtensionError,
   type SessionStartEvent,
   type SessionInfo
 } from '@earendil-works/pi-coding-agent';
@@ -950,9 +951,12 @@ export class PiBridge {
     });
     slot.runtime.setRebindSession(async () => {
       slot.session = slot.runtime.session;
+      // 会话被 SDK 替换（new / fork / resume / import）后必须重新绑定扩展
+      await this.bindSessionExtensions(slot);
     });
 
     slot.session = slot.runtime.session;
+    await this.bindSessionExtensions(slot);
     this.rebind(slot);
     // read_img 工具可见性：按当前模型是否支持视觉注入/移除
     this.syncReadImgTool(slot);
@@ -1094,6 +1098,42 @@ export class PiBridge {
     slot.planController?.onSessionSwitch();
     slot.memoryController?.onSessionSwitch();
     slot.subagentController?.onSessionSwitch();
+  }
+
+  /**
+   * 绑定会话扩展（必须调用，且每个 session 实例只调一次）。
+   *
+   * SDK 只在 `session.bindExtensions()` 内 emit `session_start`
+   * （agent-session.js 的 `_sessionStartEvent` 仅在此处发射；TUI / print / RPC 这些官方入口
+   * 都会在每次建/换会话后调用它）。不调用则所有内联扩展的 `session_start` 处理器永不执行：
+   * 后台任务完成通知（bg_run 完成后回灌模型）的投递通道、hooks 的 SessionStart
+   * 等会话级回调都会静默失效（只剩系统通知）。
+   * 不能重复调用：bindExtensions 每次都会重发 session_start。
+   *
+   * `onError` 不只是为了记日志：SDK 的 `session.reload()` 只在「宿主绑定过东西」
+   * （`_extensionUIContext || _extensionCommandContextActions || _extensionShutdownHandler || _extensionErrorListener`）
+   * 时才重发 session_start(reason:'reload')，而本宿主只绑定 onError —— 少了它，
+   * 用户点「重新加载会话」后扩展实例是新建的，session_start 不再触发、投递通道再也绑不上。
+   */
+  private async bindSessionExtensions(slot: SessionSlot): Promise<void> {
+    const session = slot.session;
+    if (!session?.bindExtensions) return;
+    try {
+      await session.bindExtensions({
+        onError: (error: ExtensionError) => {
+          // 扩展处理器抛错在 SDK 里默认无声（runner.emitError 没有监听者就直接丢弃），
+          // 表现是「功能默默不生效」，所以这里同时落 app 日志与主进程日志。
+          console.error(`Extension error (${error.event}): ${error.error}`, error.extensionPath);
+          logAppEvent(
+            { phase: 'extensions', message: `扩展错误（${error.event}）`, detail: error },
+            'error'
+          );
+        }
+      });
+    } catch (error) {
+      // 单个扩展的 session_start 处理器抛错不应拖垮建会话
+      console.error('Failed to bind session extensions:', error);
+    }
   }
 
   private rebind(slot: SessionSlot = this.focusedSlot()) {
