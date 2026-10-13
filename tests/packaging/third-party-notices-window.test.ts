@@ -182,6 +182,8 @@ describe('开源许可查看窗口', () => {
     expect(win.options.title).toBe('开源许可');
     expect(win.options.show).toBe(false);
     expect(win.options.width).toBe(940);
+    // Windows/Linux 窗口图标须与主窗口共用同一份资源（否则显示 Electron 默认图标）
+    expect(String(win.options.icon).replace(/\\/g, '/')).toMatch(/build\/icons\/icon\.png$/);
     expect(win.options.webPreferences).toEqual({ spellcheck: false });
     expect(win.loadFile).toHaveBeenCalledWith(DEV_NOTICES_FILE);
     expect(win.insertedCss).toHaveLength(1);

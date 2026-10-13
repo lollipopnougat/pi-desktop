@@ -75,6 +75,8 @@ export async function openThirdPartyNoticesWindow(
     minWidth: 560,
     minHeight: 360,
     title: '开源许可',
+    // Windows/Linux 用与主窗口同一份图标（macOS 窗口无独立图标，此项被忽略）
+    icon: path.join(__dirname, '../build/icons/icon.png'),
     show: false,
     backgroundColor: dark ? '#1e2227' : '#ffffff',
     autoHideMenuBar: true,
