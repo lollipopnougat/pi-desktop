@@ -1,0 +1,14 @@
+package-lock.json
+  h_cc604c9bda8355 3,9,11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "55c8730aaa3c57dae9ff80416bfa424ccac97771",
+  "prompts": {},
+  "humans": {
+    "h_cc604c9bda8355": {
+      "author": "lollipopnougat <ab2defg145@gmail.com>"
+    }
+  }
+}
