@@ -14,6 +14,7 @@ import { resolveReadablePath, isInsideProject } from '../project-path';
 import { sameSession, type SessionIdentity } from '../../src/types/session';
 import { detectExternalApps, openExternalApp } from '../external-apps';
 import { removeQueuedAt, moveQueuedAt } from '../queued-messages';
+import { openThirdPartyNoticesWindow } from '../third-party-notices';
 
 /** 判断 skill 是否为内置只读技能（位于 builtinSkillsDir 之下，与 skill-ipc 同一判定） */
 function isBuiltinSkill(builtinSkillsDir: string, skill: any): boolean {
@@ -529,18 +530,24 @@ export function registerMiscIpc(ctx: MiscContext) {
 
   ipcMain.handle('pi:getCwd', async () => ctx.cwd);
 
-  // Windows/Linux 关于弹窗
+  // Windows/Linux 关于弹窗（第二个按钮打开开源许可清单）
   ipcMain.handle('pi:showAbout', async () => {
     const { app } = await import('electron');
-    await dialog.showMessageBox(ctx.win, {
+    const result = await dialog.showMessageBox(ctx.win, {
       type: 'info',
       title: `关于 ${app.name}`,
       message: app.name,
       detail: `版本 ${app.getVersion()}\n基于 pi agent SDK 的桌面端 AI 编码助手`,
-      buttons: ['确定']
+      buttons: ['确定', '开源许可'],
+      defaultId: 0,
+      cancelId: 0
     });
+    if (result.response === 1) await openThirdPartyNoticesWindow(ctx.win);
     return { ok: true };
   });
+
+  // 开源许可清单窗口（清单由构建期的 npm run notices 生成，随安装包分发）
+  ipcMain.handle('pi:openThirdPartyNotices', async () => openThirdPartyNoticesWindow(ctx.win));
 
   ipcMain.handle('pi:selectDirectory', async () => {
     if (!ctx.win) return null;

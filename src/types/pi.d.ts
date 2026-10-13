@@ -1326,6 +1326,8 @@ export interface PiAPI {
   }>;
   /** Windows/Linux 关于弹窗 */
   showAbout(): Promise<{ ok: boolean }>;
+  /** 打开「开源许可」清单窗口；清单未生成时返回 { ok: false } */
+  openThirdPartyNotices(): Promise<{ ok: boolean; error?: string }>;
   /** 菜单栏「打开文件夹」事件 */
   onMenuOpenFolder(cb: () => void): () => void;
   /** 菜单栏「设置」事件（macOS App 菜单） */

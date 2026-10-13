@@ -18,6 +18,7 @@ import path from 'path';
 import { PiBridge } from './pi-bridge';
 import { logAppEvent } from './logs/channel-logs';
 import { deleteOrphanSubagentSessions } from './subagents/session-file';
+import { openThirdPartyNoticesWindow } from './third-party-notices';
 
 // SDK 的 getPackageDir() / getExportTemplateDir() 基于 __dirname 向上查找 package.json，
 // 在 Vite 把 SDK 打包进 dist-electron/main.js 后，__dirname 会解析到项目根，
@@ -216,6 +217,13 @@ app.whenReady().then(() => {
     } catch {}
   }
 
+  // macOS 关于面板（role: 'about' 打开）补一行指向开源许可清单的说明
+  if (isMac) {
+    app.setAboutPanelOptions({
+      credits: '本软件随附第三方开源组件的许可清单，见菜单「开源许可」。'
+    });
+  }
+
   // 应用菜单栏：macOS 显示系统顶部菜单，Windows/Linux 显示窗口内菜单栏
   const menuTemplate: MenuItemConstructorOptions[] = [
     // macOS App 菜单（应用名/关于/退出）
@@ -225,6 +233,12 @@ app.whenReady().then(() => {
             label: app.name,
             submenu: [
               { role: 'about' as const, label: `关于 ${app.name}` },
+              {
+                label: '开源许可',
+                click: () => {
+                  void openThirdPartyNoticesWindow(mainWindow);
+                }
+              },
               { type: 'separator' as const },
               {
                 label: '设置...',
@@ -286,7 +300,7 @@ app.whenReady().then(() => {
         { role: 'close' as const, label: '关闭' }
       ]
     },
-    // Windows/Linux 帮助菜单（关于）
+    // Windows/Linux 帮助菜单（关于 / 开源许可）
     ...(!isMac
       ? [
           {
@@ -295,13 +309,25 @@ app.whenReady().then(() => {
               {
                 label: `关于 ${app.name}`,
                 click: () => {
-                  dialog.showMessageBox(mainWindow!, {
-                    type: 'info',
-                    title: `关于 ${app.name}`,
-                    message: app.name,
-                    detail: `版本 ${app.getVersion()}\n基于 pi agent SDK 的桌面端 AI 编码助手`,
-                    buttons: ['确定']
-                  });
+                  void dialog
+                    .showMessageBox(mainWindow!, {
+                      type: 'info',
+                      title: `关于 ${app.name}`,
+                      message: app.name,
+                      detail: `版本 ${app.getVersion()}\n基于 pi agent SDK 的桌面端 AI 编码助手`,
+                      buttons: ['确定', '开源许可'],
+                      defaultId: 0,
+                      cancelId: 0
+                    })
+                    .then((result) => {
+                      if (result.response === 1) void openThirdPartyNoticesWindow(mainWindow);
+                    });
+                }
+              },
+              {
+                label: '开源许可',
+                click: () => {
+                  void openThirdPartyNoticesWindow(mainWindow);
                 }
               }
             ]

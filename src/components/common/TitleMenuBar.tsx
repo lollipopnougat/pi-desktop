@@ -62,7 +62,10 @@ export default function TitleMenuBar({ onOpenFolder, onOpenSettings, onAbout }: 
     },
     {
       label: '帮助',
-      items: [{ label: `关于 ${t.appName}`, onClick: onAbout }]
+      items: [
+        { label: `关于 ${t.appName}`, onClick: onAbout },
+        { label: t.openSourceLicenses, onClick: () => void window.pi.openThirdPartyNotices() }
+      ]
     }
   ];
 

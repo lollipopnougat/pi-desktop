@@ -19,6 +19,8 @@ export const t = {
   showWorkspace: '显示右侧工作区',
   hideWorkspace: '隐藏右侧工作区',
   settings: '设置',
+  /** 帮助菜单：查看随包分发的第三方许可清单（electron/third-party-notices.ts） */
+  openSourceLicenses: '开源许可',
   loading: '加载中...',
 
   // 面板开关（标题栏）
