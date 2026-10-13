@@ -1,0 +1,22 @@
+AGENTS.md
+  s_b0314d1a2b31b3::t_da1b5a27e02915 284
+  s_b0314d1a2b31b3::t_f7149fad186734 283
+package.json
+  s_b0314d1a2b31b3::t_9e78679aec477f 102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2eb72e877c7d72ad099938da87ddb5705081ae53",
+  "prompts": {},
+  "sessions": {
+    "s_b0314d1a2b31b3": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a13593-7ff8-74e8-b336-5283b0148f42",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "lollipopnougat <ab2defg145@gmail.com>"
+    }
+  }
+}
