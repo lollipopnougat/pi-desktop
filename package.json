@@ -99,7 +99,7 @@
       "!**/node_modules/**/*.ts.map",
       "!**/node_modules/**/{src,docs,doc,examples,example,tests,test,__tests__,__test__,coverage,benchmark,benchmarks,fixtures,mock,mocks,man}/**",
       "!**/node_modules/**/*.{md,markdown,MD,ts,tsx,coffee,flow,mdx}",
-      "!**/node_modules/**/{CHANGELOG,CHANGES,HISTORY,LICENSE,LICENCE,NOTICE,README,readme}*",
+      "!**/node_modules/**/{CHANGELOG,CHANGES,HISTORY,NOTICE,README,readme}*",
       "!**/node_modules/**/{.github,.vscode,.idea,.nyc_output,.git,.cache}/**",
       "!**/node_modules/**/{*.tgz,*.tar.gz,*.zip}",
       "!**/node_modules/monaco-editor/{dev,min-maps,esm}/**",
