@@ -254,6 +254,8 @@ const piAPI = {
     ipcRenderer.invoke('pi:setReadImgModel', provider, modelId),
   // Windows/Linux 关于弹窗
   showAbout: () => ipcRenderer.invoke('pi:showAbout'),
+  /** 开源许可清单窗口（清单构建期生成，随安装包分发） */
+  openThirdPartyNotices: () => ipcRenderer.invoke('pi:openThirdPartyNotices'),
   onMenuOpenFolder: (cb: () => void) => {
     const handler = () => cb();
     ipcRenderer.on('pi:menuOpenFolder', handler);

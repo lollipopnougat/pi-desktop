@@ -61,6 +61,7 @@ function deferred() {
 }
 function makeRuntime(cwd: string, id: string) {
   const unsubscribe = vi.fn();
+  const rebind: { current: (() => Promise<void>) | null } = { current: null };
   const session = {
     sessionId: id,
     messages: [],
@@ -74,14 +75,19 @@ function makeRuntime(cwd: string, id: string) {
     dispose: vi.fn(),
     subscribe: vi.fn(() => unsubscribe),
     getActiveToolNames: () => [],
-    setActiveToolsByName: vi.fn()
+    setActiveToolsByName: vi.fn(),
+    // PiBridge 建槽/换会话时必须调用它：SDK 只在 bindExtensions 里 emit session_start
+    bindExtensions: vi.fn(async () => {})
   };
   return {
     cwd,
     session,
+    rebind,
     dispose: vi.fn(async () => {}),
     setBeforeSessionInvalidate: vi.fn(),
-    setRebindSession: vi.fn(),
+    setRebindSession: vi.fn((callback: () => Promise<void>) => {
+      rebind.current = callback;
+    }),
     unsubscribe
   };
 }
@@ -210,6 +216,23 @@ describe('PiBridge runtime lifecycle', () => {
     expect(bridge.sessionFor().requireSession().sessionId).toBe('B');
     expect(bridge.cwd).toBe('/project/B');
     expect(mocks.setCwd).toHaveBeenLastCalledWith('/project/B');
+  });
+
+  it('binds session extensions on slot creation and after the runtime replaces the session', async () => {
+    const { bridge, old } = await makeBridge();
+    // 建槽时必须 bindExtensions：SDK 只在它内部 emit session_start，
+    // 而后台任务完成通知 / hooks 的 SessionStart 等会话级回调都注册在 session_start 上。
+    expect(old.session.bindExtensions).toHaveBeenCalledOnce();
+    // 传 onError：SDK 的 reload() 只在此类绑定存在时才重发 session_start
+    expect(typeof old.session.bindExtensions.mock.calls[0][0].onError).toBe('function');
+
+    // SDK 的 newSession/fork/resume 会回调 rebindSession —— 换会话后必须重新绑定，
+    // 否则新 session 收不到 session_start（旧绑定绑不上新会话）。
+    const replacement = makeRuntime('/project/A', 'A2');
+    old.session = replacement.session;
+    await old.rebind.current?.();
+    expect(replacement.session.bindExtensions).toHaveBeenCalledOnce();
+    expect(bridge.sessionFor().requireSession().sessionId).toBe('A2');
   });
 
   it('makes quit idempotent and awaits asynchronous cleanup before disconnecting MCP', async () => {

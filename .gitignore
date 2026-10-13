@@ -42,3 +42,6 @@ Thumbs.db
 
 # 测试覆盖率报告（npm run test:coverage 生成）
 coverage/
+
+# 构建期生成的第三方许可清单（npm run notices 产出，随安装包分发）
+resources/THIRD-PARTY-NOTICES.txt
