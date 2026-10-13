@@ -1,0 +1,39 @@
+preload.ts
+  s_b0314d1a2b31b3::t_25ba61d6c768cd 257-258
+electron/ipc/misc-ipc.ts
+  s_b0314d1a2b31b3::t_97946b4e5cd91d 17,533,536,541-543,545,549-551
+electron/third-party-notices.ts
+  s_b0314d1a2b31b3::t_b49eed95289a4d 1-100
+README.md
+  s_b0314d1a2b31b3::t_8eb14c1d81d5c5 317
+src/types/pi.d.ts
+  s_b0314d1a2b31b3::t_fa23d9599b344e 1329-1330
+src/components/common/TitleMenuBar.tsx
+  s_b0314d1a2b31b3::t_443b89bac21acd 65-68
+tests/packaging/third-party-notices-window.test.ts
+  s_b0314d1a2b31b3::t_8f1bbfa1ad6b97 1-124,128-154,156-255
+  s_b0314d1a2b31b3::t_6a0b89e54ecfcc 125-127
+  s_b0314d1a2b31b3::t_5fab7f53a89da3 155
+AGENTS.md
+  s_b0314d1a2b31b3::t_e55a1194e89306 194,289
+src/i18n/zh.ts
+  s_b0314d1a2b31b3::t_19b0e3d02e4d39 22-23
+electron/main.ts
+  s_b0314d1a2b31b3::t_91fa7d96fa489f 21,220-226,236-241,303,312-330
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "aac92489f51dd7ed446a15accab2b68c602af40d",
+  "prompts": {},
+  "sessions": {
+    "s_b0314d1a2b31b3": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a13593-7ff8-74e8-b336-5283b0148f42",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "lollipopnougat <ab2defg145@gmail.com>"
+    }
+  }
+}
