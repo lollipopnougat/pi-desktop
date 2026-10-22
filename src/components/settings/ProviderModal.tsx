@@ -479,7 +479,7 @@ export default function ProviderModal({
               <button
                 onClick={handleFetchModels}
                 disabled={!form.baseUrl || fetchingModels}
-                className="flex items-center gap-1 rounded bg-od-accent px-2 py-0.5 text-xs text-white hover:bg-od-accent/80 disabled:opacity-40"
+                className="flex items-center gap-1 rounded bg-od-accent px-2 py-0.5 text-xs text-white hover:bg-od-accent/80 active:bg-od-accent/65 disabled:opacity-40"
               >
                 <Icon name="retry" className="w-3" spin={fetchingModels} />
                 {fetchingModels ? t.fetchModelsFetching : t.fetchModels}
@@ -1027,7 +1027,7 @@ export default function ProviderModal({
                 <button
                   onClick={addModel}
                   disabled={!draft.id.trim()}
-                  className="flex items-center gap-1 rounded bg-od-accent px-3 py-1 text-xs text-white hover:bg-od-accent/80 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex items-center gap-1 rounded bg-od-accent px-3 py-1 text-xs text-white hover:bg-od-accent/80 active:bg-od-accent/65 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Icon name="plus" className="w-3" />
                   {t.modelAddButton}
@@ -1049,7 +1049,7 @@ export default function ProviderModal({
           <button
             onClick={handleSave}
             disabled={!form.key || !form.baseUrl || saving}
-            className="flex items-center gap-1 rounded bg-od-accent px-3 py-1 text-xs text-white hover:bg-od-accent/80 disabled:opacity-50"
+            className="flex items-center gap-1 rounded bg-od-accent px-3 py-1 text-xs text-white hover:bg-od-accent/80 active:bg-od-accent/65 disabled:opacity-50"
           >
             {saving && <Icon name="spinner" spin className="w-3" />}
             {t.saveProvider}

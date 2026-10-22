@@ -1,3 +1,6 @@
+import type { TurnChanges, TurnFileChange } from '../../types/shared';
+import { aggregateTurnChanges } from '../../lib/turn-changes';
+
 /** SDK 消息内容可混合正文、思考与多个工具；分组必须按内容块而非消息数量进行。 */
 export interface ToolCallBlock {
   type: 'toolCall';
@@ -43,6 +46,8 @@ export interface ChatTurn {
   key: string;
   userTimestamp?: number;
   items: ChatRenderItem[];
+  /** 本轮内 agent 改过的文件（渲染「本次改动」卡片）；本轮没有文件改动时不设置 */
+  changes?: TurnChanges;
 }
 
 /**
@@ -56,8 +61,16 @@ export interface ChatItemBuildState {
   seenTools: Set<string>;
 }
 
-/** 每条可见用户消息开始一轮，后续回复、思考和工具活动归属该轮。 */
-export function groupChatItemsByTurn(items: ChatRenderItem[]): ChatTurn[] {
+/**
+ * 每条可见用户消息开始一轮，后续回复、思考和工具活动归属该轮。
+ *
+ * `changeByToolCall`（`toolCallId → 该次调用的文件改动`，见 `src/lib/turn-changes.ts`）
+ * 用于把工具调用折算成「本轮改动」；不传则各轮都没有改动卡片（流式期间也不必传）。
+ */
+export function groupChatItemsByTurn(
+  items: ChatRenderItem[],
+  changeByToolCall?: ReadonlyMap<string, TurnFileChange>
+): ChatTurn[] {
   const turns: ChatTurn[] = [];
   for (const item of items) {
     let turn = turns[turns.length - 1];
@@ -70,6 +83,21 @@ export function groupChatItemsByTurn(items: ChatRenderItem[]): ChatTurn[] {
       turns.push(turn);
     }
     turn.items.push(item);
+  }
+  if (!changeByToolCall || changeByToolCall.size === 0) return turns;
+
+  for (const turn of turns) {
+    const changes: TurnFileChange[] = [];
+    for (const item of turn.items) {
+      if (item.type !== 'toolGroup') continue;
+      for (const activity of item.activities) {
+        if (activity.type !== 'tool') continue;
+        const change = changeByToolCall.get(activity.toolCall.id);
+        if (change) changes.push(change);
+      }
+    }
+    const aggregated = aggregateTurnChanges(changes);
+    if (aggregated) turn.changes = aggregated;
   }
   return turns;
 }

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
 import FileTree from '../code/FileTree';
 import Breadcrumb from '../code/Breadcrumb';
 import DiffViewer from '../code/DiffViewer';
+import ReviewPanel from '../code/ReviewPanel';
 import ResizeHandle from '../common/ResizeHandle';
 import Markdown from '../common/Markdown';
 import BrowserContent from './BrowserContent';
@@ -12,6 +13,9 @@ import { usePiStore } from '../../store/pi-store';
 import Icon from '../common/Icon';
 import { t } from '../../i18n/zh';
 import type { CodeTab } from '../../types/shared';
+import { changeSignature, shortHash } from '../../lib/turn-changes';
+import { resolveTurnFileDiff } from '../../lib/turn-diff';
+import { onSelectWorkspaceTab } from '../../lib/app-commands';
 import type { BrowserState, BrowserTabState } from '../../types/pi';
 
 interface BrowserWorkspaceTab extends BrowserTabState {
@@ -59,6 +63,16 @@ export default function RightWorkspace() {
   const selectTabId = useCallback((tabId: string | null) => {
     activeTabIdRef.current = tabId;
     setActiveTabId(tabId);
+  }, []);
+
+  /**
+   * 释放 pendingFile 处理闸门。处理期间又来了新请求时会因为闸门被挡掉，
+   * 这里用它的新引用重新触发一次 effect，避免「第二次点击被静默吞掉」。
+   */
+  const releaseProcessing = useCallback(() => {
+    processingRef.current = false;
+    const queued = usePiStore.getState().pendingFile;
+    if (queued) usePiStore.getState().setPendingFile({ ...queued });
   }, []);
 
   useEffect(() => {
@@ -160,8 +174,67 @@ export default function RightWorkspace() {
     setPendingFile(null);
     if (pendingFile.mode === 'file') {
       handleFileOpen(pendingFile.path).finally(() => {
-        processingRef.current = false;
+        releaseProcessing();
       });
+      return;
+    }
+
+    // 「本次改动」卡片点「审核」：一轮里所有被改动的文件，左侧列表 + 右侧完整 diff
+    if (pendingFile.mode === 'review') {
+      const reviewChanges = pendingFile.changes ?? [];
+      if (reviewChanges.length === 0) {
+        releaseProcessing();
+        return;
+      }
+      const reviewId = `review:${reviewChanges.length}:${shortHash(
+        reviewChanges.map(changeSignature).join('|')
+      )}`;
+      const openedReview = codeTabsRef.current.find((tab) => tab.id === reviewId);
+      if (openedReview) {
+        selectTabId(openedReview.id);
+      } else {
+        const reviewTab: CodeTab = {
+          id: reviewId,
+          type: 'review',
+          title: t.turnChanges.reviewTitle(reviewChanges.length),
+          filePath: reviewChanges[0]?.path ?? '',
+          changes: reviewChanges
+        };
+        setCodeTabs((previous) => [...previous, reviewTab]);
+        selectTabId(reviewTab.id);
+      }
+      releaseProcessing();
+      return;
+    }
+
+    // 「本次改动」卡片点文件名：该文件的完整前后内容（反应用 patch 还原改动前内容）
+    if (pendingFile.change) {
+      const change = pendingFile.change;
+      const tabId = `diff:${shortHash(changeSignature(change))}`;
+      const opened = codeTabsRef.current.find((tab) => tab.id === tabId);
+      if (opened) {
+        selectTabId(opened.id);
+        releaseProcessing();
+        return;
+      }
+      void (async () => {
+        const [resolved, name] = await Promise.all([
+          resolveTurnFileDiff(change, (path) => window.pi.readFile(path)),
+          window.pi.baseName(change.path).catch(() => '')
+        ]);
+        const diffTab: CodeTab = {
+          id: tabId,
+          type: 'diff',
+          title: `Diff: ${name || change.path}`,
+          filePath: change.path,
+          patch: change.patches.join('\n'),
+          originalContent: resolved?.original,
+          modifiedContent: resolved?.modified
+        };
+        setCodeTabs((previous) => [...previous, diffTab]);
+        selectTabId(diffTab.id);
+        releaseProcessing();
+      })();
       return;
     }
 
@@ -180,7 +253,7 @@ export default function RightWorkspace() {
     const existing = codeTabsRef.current.find((tab) => tab.id === tabId);
     if (existing) {
       selectTabId(existing.id);
-      processingRef.current = false;
+      releaseProcessing();
       return;
     }
 
@@ -217,9 +290,17 @@ export default function RightWorkspace() {
       } else {
         await handleFileOpen(pendingFile.path);
       }
-      processingRef.current = false;
+      releaseProcessing();
     })();
-  }, [pendingFile, handleFileOpen, messages, selectTabId, setPendingFile, toolExecutions]);
+  }, [
+    pendingFile,
+    handleFileOpen,
+    messages,
+    releaseProcessing,
+    selectTabId,
+    setPendingFile,
+    toolExecutions
+  ]);
 
   const activateTab = (tab: WorkspaceTab) => {
     selectTabId(tab.id);
@@ -270,19 +351,41 @@ export default function RightWorkspace() {
     if (file) await handleFileOpen(file);
   };
 
-  const browserTabs = browserState.tabs.map<BrowserWorkspaceTab>((tab) => ({
-    ...tab,
-    id: browserWorkspaceId(tab.id),
-    type: 'browser',
-    browserId: tab.id
-  }));
-  const tabs: WorkspaceTab[] = [...codeTabs, ...browserTabs];
+  const browserTabs = useMemo<BrowserWorkspaceTab[]>(
+    () =>
+      browserState.tabs.map((tab) => ({
+        ...tab,
+        id: browserWorkspaceId(tab.id),
+        type: 'browser' as const,
+        browserId: tab.id
+      })),
+    [browserState.tabs]
+  );
+  const tabs = useMemo<WorkspaceTab[]>(
+    () => [...codeTabs, ...browserTabs],
+    [codeTabs, browserTabs]
+  );
+  // 数字快捷键（Mod+1..9）切标签：标签集合含浏览器标签且随状态变化，用 ref 保留最新顺序
+  const tabsRef = useRef<WorkspaceTab[]>(tabs);
+  useEffect(() => {
+    tabsRef.current = tabs;
+  }, [tabs]);
+  useEffect(() => {
+    return onSelectWorkspaceTab((index) => {
+      const target = tabsRef.current[index];
+      if (!target) return;
+      selectTabId(target.id);
+      if (target.type === 'browser') window.pi.browser.activate(target.browserId).catch(() => {});
+    });
+  }, [selectTabId]);
   const activeCodeTab = codeTabs.find((tab) => tab.id === activeTabId) || null;
   const activeBrowserTab = browserTabs.find((tab) => tab.id === activeTabId) || null;
   const activeTab = activeCodeTab || activeBrowserTab;
   const isMarkdown =
     activeCodeTab?.type === 'file' && /\.(md|markdown)$/i.test(activeCodeTab.filePath || '');
   const mdPreview = activeCodeTab ? (mdPreviewMap[activeCodeTab.id] ?? true) : true;
+  // 审核 tab 自带文件列表，再叠一层文件树会把 diff 挤没（默认面板宽度只有几百 px）
+  const showFileTree = !activeBrowserTab && activeCodeTab?.type !== 'review' && !treeCollapsed;
 
   return (
     <div className="flex h-full w-full flex-col bg-od-bg-dark">
@@ -300,7 +403,7 @@ export default function RightWorkspace() {
               title={tab.title}
             >
               <Icon
-                name={tab.type === 'browser' ? 'browser' : tab.type === 'diff' ? 'diff' : 'file'}
+                name={tab.type === 'browser' ? 'browser' : tab.type === 'file' ? 'file' : 'diff'}
                 className="w-3 shrink-0"
               />
               <span className="truncate">{tab.title}</span>
@@ -329,7 +432,7 @@ export default function RightWorkspace() {
               <Icon name="plus" className="w-3" />
             </button>
           )}
-          {!activeBrowserTab && (
+          {!activeBrowserTab && activeCodeTab?.type !== 'review' && (
             <button
               type="button"
               onClick={() => setTreeCollapsed((value) => !value)}
@@ -354,21 +457,22 @@ export default function RightWorkspace() {
         </div>
       </div>
 
-      {activeCodeTab?.filePath && (
-        <Breadcrumb
-          filePath={activeCodeTab.filePath}
-          cwd={cwd}
-          onFileOpen={handleFileOpen}
-          isMarkdown={isMarkdown}
-          mdPreview={mdPreview}
-          onToggleMdPreview={() =>
-            setMdPreviewMap((previous) => ({
-              ...previous,
-              [activeCodeTab.id]: !mdPreview
-            }))
-          }
-        />
-      )}
+      {(activeCodeTab?.type === 'file' || activeCodeTab?.type === 'diff') &&
+        activeCodeTab.filePath && (
+          <Breadcrumb
+            filePath={activeCodeTab.filePath}
+            cwd={cwd}
+            onFileOpen={handleFileOpen}
+            isMarkdown={isMarkdown}
+            mdPreview={mdPreview}
+            onToggleMdPreview={() =>
+              setMdPreviewMap((previous) => ({
+                ...previous,
+                [activeCodeTab.id]: !mdPreview
+              }))
+            }
+          />
+        )}
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
         <div className="flex flex-1 min-w-0 flex-col overflow-hidden">
@@ -394,6 +498,9 @@ export default function RightWorkspace() {
               originalContent={activeCodeTab.originalContent}
               modifiedContent={activeCodeTab.modifiedContent}
             />
+          )}
+          {activeCodeTab?.type === 'review' && (
+            <ReviewPanel changes={activeCodeTab.changes ?? []} />
           )}
           {activeBrowserTab && (
             <BrowserContent
@@ -441,7 +548,7 @@ export default function RightWorkspace() {
           )}
         </div>
 
-        {!activeBrowserTab && !treeCollapsed && (
+        {showFileTree && (
           <ResizeHandle
             side="left"
             onResize={(delta) => {
@@ -452,7 +559,7 @@ export default function RightWorkspace() {
           />
         )}
 
-        {!activeBrowserTab && !treeCollapsed && (
+        {showFileTree && (
           <div
             className="flex shrink-0 flex-col border-l border-od-border"
             style={{ width: fileTreeWidth }}

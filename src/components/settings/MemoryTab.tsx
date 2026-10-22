@@ -415,7 +415,7 @@ function MemoryEditModal({
             <button
               onClick={handleSave}
               disabled={!loaded || saving}
-              className="rounded bg-od-accent px-3 py-1.5 text-xs text-white transition-colors hover:bg-od-accent/80 disabled:opacity-50"
+              className="rounded bg-od-accent px-3 py-1.5 text-xs text-white transition-colors hover:bg-od-accent/80 active:bg-od-accent/65 disabled:opacity-50"
             >
               {saving ? t.memory.savingFile : t.memory.saveFile}
             </button>

@@ -358,7 +358,7 @@ export default function SkillsTab({
                     </button>
                     <button
                       onClick={handleSaveSkill}
-                      className="rounded bg-od-accent px-3 py-1 text-xs text-white hover:bg-od-accent/80"
+                      className="rounded bg-od-accent px-3 py-1 text-xs text-white hover:bg-od-accent/80 active:bg-od-accent/65"
                     >
                       {t.saveProvider}
                     </button>

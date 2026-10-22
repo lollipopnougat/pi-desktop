@@ -7,11 +7,13 @@ import { useMonacoSetup } from './hooks/useMonaco';
 import { transitionSession } from './hooks/loadSession';
 import { useSessionInit } from './hooks/useSessionInit';
 import { useEventBindings } from './hooks/useEventBindings';
+import { useGlobalShortcuts } from './hooks/useGlobalShortcuts';
 import ChatStream from './components/chat/ChatStream';
 import ChatInput from './components/chat/ChatInput';
 import ChatHeader from './components/chat/ChatHeader';
 import Footer from './components/Footer';
 import SessionSidebar from './components/session/SessionSidebar';
+import SessionSearchModal from './components/session/SessionSearchModal';
 import SettingsPage from './components/SettingsPage';
 import RightWorkspace from './components/workspace/RightWorkspace';
 import WorkspacePanel from './components/workspace/WorkspacePanel';
@@ -28,6 +30,7 @@ import PanelIcon from './components/common/PanelIcon';
 import TitleMenuBar from './components/common/TitleMenuBar';
 import Icon from './components/common/Icon';
 import { t } from './i18n/zh';
+import { sessionLabel } from './lib/session-label';
 
 export default function App() {
   usePiEventSubscription();
@@ -49,6 +52,7 @@ export default function App() {
     uiFontFamily,
     themeFamily,
     colorMode,
+    sessionSearchOpen,
     // actions：zustand 的 action 引用稳定（store 创建时定义），订阅不会触发多余重渲染
     // 仅保留 App JSX 直接用到的；init/切换/事件订阅的 action 在 useSessionInit/useEventBindings 内订阅
     setSettingsOpen,
@@ -56,7 +60,8 @@ export default function App() {
     setTerminalPanelOpen,
     setRightPanelOpen,
     setTodoPanelOpen,
-    setRightPanelWidth
+    setRightPanelWidth,
+    setSessionSearchOpen
   } = usePiStore(
     useShallow((s) => ({
       settingsOpen: s.settingsOpen,
@@ -79,7 +84,9 @@ export default function App() {
       setTerminalPanelOpen: s.setTerminalPanelOpen,
       setRightPanelOpen: s.setRightPanelOpen,
       setTodoPanelOpen: s.setTodoPanelOpen,
-      setRightPanelWidth: s.setRightPanelWidth
+      setRightPanelWidth: s.setRightPanelWidth,
+      sessionSearchOpen: s.sessionSearchOpen,
+      setSessionSearchOpen: s.setSessionSearchOpen
     }))
   );
   const [initialized, setInitialized] = useState(false);
@@ -109,6 +116,8 @@ export default function App() {
   // 会话初始化 + 切换、菜单/ask/plan/stats 事件订阅
   useSessionInit(initialized, setInitialized);
   useEventBindings();
+  // 全局快捷键（在设置页「键盘快捷键」里可改绑）
+  useGlobalShortcuts();
 
   if (!initialized) {
     return (
@@ -290,6 +299,23 @@ export default function App() {
 
       {/* TODO Panel（右上角浮动） */}
       {todoPanelOpen && <TodoPanel open={todoPanelOpen} onClose={() => setTodoPanelOpen(false)} />}
+
+      {/* 会话搜索弹窗：挂在 App 而不是侧栏——侧栏折叠时宽度为 0 且 overflow-hidden，
+          会把快捷键唤起（Mod+K）的弹窗连同侧栏一起裁掉 */}
+      {sessionSearchOpen && (
+        <SessionSearchModal
+          onClose={() => setSessionSearchOpen(false)}
+          onSelect={(session) => {
+            setSessionSearchOpen(false);
+            if (session.path !== usePiStore.getState().sessionFile) {
+              void transitionSession(
+                () => window.pi.switchSession(session.path || session.id),
+                sessionLabel(session)
+              );
+            }
+          }}
+        />
+      )}
 
       {/* Settings Modal */}
       {settingsOpen && <SettingsPage />}

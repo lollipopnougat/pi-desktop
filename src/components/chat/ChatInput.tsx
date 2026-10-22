@@ -14,6 +14,7 @@ import GoalBar from '../goal/GoalBar';
 import { useMention } from '../../hooks/useMention';
 import { transitionSession } from '../../hooks/loadSession';
 import { confirmStopRunning } from '../../lib/stopRunningConfirm';
+import { CHAT_INPUT_DOM_ID } from '../../lib/app-commands';
 import { t } from '../../i18n/zh';
 
 function isSessionReady(): boolean {
@@ -728,6 +729,7 @@ export default function ChatInput() {
         <div className="relative">
           <textarea
             ref={textareaRef}
+            id={CHAT_INPUT_DOM_ID}
             value={text}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
@@ -787,7 +789,7 @@ export default function ChatInput() {
                   setModeOpen(!modeOpen);
                   setPermOpen(false);
                 }}
-                className="flex items-center gap-1 rounded-lg px-1.5 h-7 text-md text-od-text-dim transition-colors hover:bg-od-bg-hover hover:text-od-text-bright"
+                className="flex items-center gap-1 rounded-lg px-1.5 h-7 text-od-text-dim transition-colors hover:bg-od-bg-hover hover:text-od-text-bright"
                 title={`${t.modeLabel}: ${modeLabel(mode)}`}
               >
                 <Icon name={modeIcon(mode)} className={modeColor(mode)} />
@@ -834,7 +836,7 @@ export default function ChatInput() {
                   setPermOpen(!permOpen);
                   setModeOpen(false);
                 }}
-                className="flex items-center gap-1 rounded-lg px-1.5 h-7 text-md text-od-text-dim transition-colors hover:bg-od-bg-hover hover:text-od-text-bright"
+                className="flex items-center gap-1 rounded-lg px-1.5 h-7 text-od-text-dim transition-colors hover:bg-od-bg-hover hover:text-od-text-bright"
                 title={`${t.permissionLabel}: ${permLabel(permissionPolicy)}`}
               >
                 <Icon name={permIcon(permissionPolicy)} className={permColor(permissionPolicy)} />
@@ -893,7 +895,7 @@ export default function ChatInput() {
                   !text.trim() ||
                   availableModels.length === 0
                 }
-                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white transition-colors hover:opacity-80 disabled:opacity-30 ${
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white transition-colors hover:opacity-80 active:opacity-70 disabled:opacity-30 ${
                   mode === 'plan'
                     ? 'bg-od-purple'
                     : mode === 'goal'
@@ -918,7 +920,7 @@ export default function ChatInput() {
                   }
                 }}
                 disabled={isSessionLoading || sessionRevision === null}
-                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white transition-colors hover:opacity-80 disabled:opacity-30 ${
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white transition-colors hover:opacity-80 active:opacity-70 disabled:opacity-30 ${
                   mode === 'plan'
                     ? 'bg-od-purple'
                     : mode === 'goal'
@@ -941,7 +943,7 @@ export default function ChatInput() {
                   }
                 }}
                 disabled={isSessionLoading || sessionRevision === null}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-od-red text-white transition-colors hover:bg-od-red/80 disabled:opacity-30"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-od-red text-white transition-colors hover:bg-od-red/80 active:bg-od-red/65 disabled:opacity-30"
                 title={t.abort}
               >
                 <Icon name="abort" className="w-3" />

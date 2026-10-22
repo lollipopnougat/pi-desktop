@@ -608,7 +608,7 @@ function PermissionSection() {
           <button
             onClick={handleSave}
             disabled={!loaded || saving}
-            className="flex items-center gap-1.5 rounded bg-od-accent px-3 py-1 text-xs text-white transition-colors hover:bg-od-accent/80 disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded bg-od-accent px-3 py-1 text-xs text-white transition-colors hover:bg-od-accent/80 active:bg-od-accent/65 disabled:opacity-50"
           >
             <Icon name={saving ? 'spinner' : 'check'} spin={saving} className="w-3" />
             {t.permissionWhitelistSave}
@@ -684,7 +684,7 @@ function GlobalInstructionsSection() {
           <button
             onClick={handleSave}
             disabled={!loaded || saving || !dirty}
-            className="flex items-center gap-1.5 rounded bg-od-accent px-3 py-1 text-xs text-white transition-colors hover:bg-od-accent/80 disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded bg-od-accent px-3 py-1 text-xs text-white transition-colors hover:bg-od-accent/80 active:bg-od-accent/65 disabled:opacity-50"
           >
             <Icon name={saving ? 'spinner' : 'check'} spin={saving} className="w-3" />
             {t.globalInstructionsSave}

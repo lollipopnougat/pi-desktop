@@ -22,7 +22,8 @@
 }
 
 html {
-  font-size: 13px;
+  /* 首帧回退值，与 store 的 FONT_SIZE_DEFAULT 保持一致（设置载入后由 App 覆盖） */
+  font-size: 14px;
 }
 
 html,
@@ -114,6 +115,27 @@ select:focus {
   outline: none;
   border-color: rgb(var(--od-accent));
   box-shadow: 0 0 0 1px rgb(var(--od-accent));
+}
+
+/* ===== 设置页搜索命中定位 =====
+ * 从搜索结果跳转后，给命中的分区标题一次短暂底色高亮，指明落点。
+ * 只动背景与行内内边距（负 margin 抵消），不改变文档流高度。
+ */
+@keyframes settings-section-flash {
+  from {
+    background-color: rgb(var(--od-accent) / 0.22);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+.settings-section-flash {
+  animation: settings-section-flash 1.2s ease-out;
+  border-radius: 3px;
+  padding-left: 3px;
+  padding-right: 3px;
+  margin-left: -3px;
+  margin-right: -3px;
 }
 
 /* placeholder：浏览器默认色太淡（UA 在浅背景上几乎看不见），用主题 text-dim */

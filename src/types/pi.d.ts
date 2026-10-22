@@ -17,6 +17,7 @@ import type {
 import type { ExternalApp, Provider } from './shared';
 import type { ModelPreset } from './model-preset';
 import type { UsageStatistics, UsageStatisticsQuery } from './usage-statistics';
+import type { ShortcutMap } from '../lib/shortcuts';
 
 // ─── 从主包类型推导出的间接类型（这些无法直接 import，借由已 re-export 的类型提取） ───
 
@@ -827,6 +828,10 @@ interface UiSettings {
   permissionClassifierConfig?: ClassifierApprovalConfig;
   /** read_img 图片识别模型（null = 不启用该工具） */
   readImgModel?: { provider: string; modelId: string } | null;
+  /** 键盘快捷键：动作 id → 绑定串（空串 = 未分配；缺失的动作走默认值） */
+  shortcuts?: ShortcutMap;
+  /** 数字快捷键（Mod+1..9）的用途：切换右侧工作区标签 / 关闭 */
+  shortcutNumberKeys?: 'workspace' | 'off';
 }
 
 export interface BrowserTabState {

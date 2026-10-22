@@ -1,6 +1,6 @@
 {
   "name": "pi-desktop",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "description": "Pi Desktop App - AI coding assistant powered by pi agent SDK",
   "license": "MIT",
   "main": "dist-electron/main.js",

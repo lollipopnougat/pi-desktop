@@ -118,10 +118,50 @@ export interface MentionItem {
   value: string;
 }
 
-/** 代码面板 tab（CodePanel 用） */
+/**
+ * 一轮对话里被 agent 改动过的一个文件（聊天「本次改动」卡片 + 右侧审核面板用）。
+ *
+ * `patches` 是该文件在本轮内的全部 unified patch（按发生顺序），可能多于一个：
+ * 同一个文件被连续 edit 多次时，每次 patch 都基于各自时刻的文件内容生成，不能简单拼接，
+ * 需要时由 `src/lib/turn-diff.ts` 从当前文件内容倒序反向应用还原改动前内容。
+ */
+export interface TurnFileChange {
+  /** 工具上报的路径（相对 cwd 或绝对路径），可直接交给 pi:readFile */
+  path: string;
+  patches: string[];
+  additions: number;
+  deletions: number;
+  /** edit = 精确 patch；write = 整文件写入（工具不返回 patch，按整文件内容计新增） */
+  kind: 'edit' | 'write';
+}
+
+/** 一轮对话的全部文件改动 */
+export interface TurnChanges {
+  files: TurnFileChange[];
+  additions: number;
+  deletions: number;
+}
+
+/**
+ * 右侧工作区「打开文件 / 打开 diff / 打开本轮审核」请求（`store.pendingFile`）。
+ * 由聊天里的按钮写入，`RightWorkspace` 消费后立即清空。
+ */
+export interface PendingFileRequest {
+  path: string;
+  mode: 'file' | 'diff' | 'review';
+  /** 单个工具调用的 diff（ToolCard 的「查看 diff」） */
+  toolCallId?: string;
+  edits?: any[];
+  /** 一轮里某个文件的改动（「本次改动」卡片点文件名） */
+  change?: TurnFileChange;
+  /** 一轮里全部改动文件（「本次改动」卡片点「审核」） */
+  changes?: TurnFileChange[];
+}
+
+/** 代码面板 tab（CodePanel / RightWorkspace 用） */
 export interface CodeTab {
   id: string;
-  type: 'file' | 'diff';
+  type: 'file' | 'diff' | 'review';
   title: string;
   filePath: string;
   content?: string;
@@ -129,6 +169,8 @@ export interface CodeTab {
   beforeContent?: string;
   originalContent?: string;
   modifiedContent?: string;
+  /** type='review'：本次审核的文件列表（左侧列表 + 右侧 diff） */
+  changes?: TurnFileChange[];
 }
 
 /** 会话树节点（TreeView 用） */

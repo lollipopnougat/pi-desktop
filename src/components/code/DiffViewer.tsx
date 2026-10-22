@@ -1,7 +1,8 @@
 import { DiffEditor } from '@monaco-editor/react';
-import { parsePatch, applyPatch } from 'diff';
+import { applyPatch } from 'diff';
 import { detectLanguage } from '../../hooks/useMonaco';
 import { useMonacoEditor } from '../../hooks/useMonacoEditor';
+import { reconstructFromPatch } from '../../lib/patch-utils';
 
 interface DiffViewerProps {
   filePath: string;
@@ -12,34 +13,10 @@ interface DiffViewerProps {
 }
 
 /**
- * 从 unified patch 的 hunk 重建 original/modified 片段。
- * 上下文行（空格前缀）进两侧；删除行（-）只进 original；新增行（+）只进 modified。
- * 返回的是改动区域附近的片段（含 context 行），非完整文件。
+ * 渲染 unified patch 或完整前后内容（Monaco DiffEditor）。
+ * 有 originalContent/modifiedContent 时直接用整份文件（右侧审核面板 / 本轮改动精确定位），
+ * 只有 patch 时：有 beforeContent 就正向应用 patch，否则从 hunk 重建改动区域片段。
  */
-function reconstructFromPatch(patch: string): { original: string; modified: string } {
-  const parsed = parsePatch(patch);
-  if (parsed.length === 0) return { original: '', modified: '' };
-  const origLines: string[] = [];
-  const modLines: string[] = [];
-  for (const file of parsed) {
-    for (const hunk of file.hunks) {
-      for (const line of hunk.lines) {
-        const prefix = line[0];
-        const content = line.slice(1);
-        if (prefix === ' ') {
-          origLines.push(content);
-          modLines.push(content);
-        } else if (prefix === '-') {
-          origLines.push(content);
-        } else if (prefix === '+') {
-          modLines.push(content);
-        }
-      }
-    }
-  }
-  return { original: origLines.join('\n'), modified: modLines.join('\n') };
-}
-
 export default function DiffViewer({
   filePath,
   patch,

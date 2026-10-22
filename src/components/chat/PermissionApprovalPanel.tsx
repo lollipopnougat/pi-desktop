@@ -193,7 +193,7 @@ export default function PermissionApprovalPanel() {
         {!request.classifier && (
           <button
             onClick={() => respond('allow-session')}
-            className="rounded bg-od-accent px-3 py-1 text-xs text-white transition-colors hover:bg-od-accent/80"
+            className="rounded bg-od-accent px-3 py-1 text-xs text-white transition-colors hover:bg-od-accent/80 active:bg-od-accent/65"
             title={t.permissionAllowSessionDesc}
           >
             {t.permissionAllowSession}
