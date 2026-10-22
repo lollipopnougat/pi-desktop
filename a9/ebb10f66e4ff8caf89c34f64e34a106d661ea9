@@ -1,0 +1,102 @@
+package.json
+  h_cc604c9bda8355 3
+src/App.tsx
+  h_cc604c9bda8355 10,16,33,55,63-64,87-89,119-120,303-319
+src/components/SettingsPage.tsx
+  h_cc604c9bda8355 1,17-24,26-59,62,67-71,74-124,145-181,183-256,259,261,264
+src/components/chat/ChatInput.tsx
+  h_cc604c9bda8355 17,732,792,839,898,923,946
+src/components/chat/ChatStream.tsx
+  h_cc604c9bda8355 11-12,59-60,87-88,93-94,96,104-120
+src/components/chat/PermissionApprovalPanel.tsx
+  h_cc604c9bda8355 196
+src/components/chat/TurnChangesCard.tsx
+  h_cc604c9bda8355 1-112
+src/components/chat/chat-items.ts
+  h_cc604c9bda8355 1-3,49-50,64-73,87-101
+src/components/code/CodePanel.tsx
+  h_cc604c9bda8355 18-23
+src/components/code/DiffViewer.tsx
+  h_cc604c9bda8355 2,5,16-18
+src/components/code/ReviewPanel.tsx
+  h_cc604c9bda8355 1-153
+src/components/common/ConfirmDialog.tsx
+  h_cc604c9bda8355 67
+src/components/common/PromptModal.tsx
+  h_cc604c9bda8355 84
+src/components/common/icons.ts
+  h_cc604c9bda8355 91,189
+src/components/session/SessionInfoModal.tsx
+  h_cc604c9bda8355 147
+src/components/session/SessionSidebar.tsx
+  h_cc604c9bda8355 12,63-66
+src/components/settings/AgentTab.tsx
+  h_cc604c9bda8355 611,687
+src/components/settings/BuiltinProviders.tsx
+  h_cc604c9bda8355 253
+src/components/settings/HooksTab.tsx
+  h_cc604c9bda8355 485
+src/components/settings/McpTab.tsx
+  h_cc604c9bda8355 562
+src/components/settings/MemoryTab.tsx
+  h_cc604c9bda8355 418
+src/components/settings/ProviderModal.tsx
+  h_cc604c9bda8355 482,1030,1052
+src/components/settings/ShortcutsTab.tsx
+  h_cc604c9bda8355 1-402
+src/components/settings/SkillsTab.tsx
+  h_cc604c9bda8355 361
+src/components/settings/settings-nav.ts
+  h_cc604c9bda8355 1-366
+src/components/workspace/RightWorkspace.tsx
+  h_cc604c9bda8355 1,6,16-18,68-77,177,182-240,256,293,295-303,354-380,387-388,406,435,460-475,502-504,551,562
+src/hooks/useGlobalShortcuts.ts
+  h_cc604c9bda8355 1-73
+src/i18n/zh.ts
+  h_cc604c9bda8355 455-468,484-492,561-609
+src/index.css
+  h_cc604c9bda8355 25-26,120-140
+src/lib/app-commands.ts
+  h_cc604c9bda8355 1-25
+src/lib/patch-utils.ts
+  h_cc604c9bda8355 1-92
+src/lib/session-label.ts
+  h_cc604c9bda8355 1-23
+src/lib/shortcut-commands.ts
+  h_cc604c9bda8355 1-137
+src/lib/shortcuts.ts
+  h_cc604c9bda8355 1-386
+src/lib/turn-changes.ts
+  h_cc604c9bda8355 1-163
+src/lib/turn-diff.ts
+  h_cc604c9bda8355 1-44
+src/store/pi-store.ts
+  h_cc604c9bda8355 9,14-19,324,456,509-526,544,665-668,692,696-702,776-784,847-850,897-899,1217-1240
+src/theme/themes.ts
+  h_cc604c9bda8355 100,128,172,272,282,306,460,497-498,532,570,604,748
+src/types/pi.d.ts
+  h_cc604c9bda8355 20,831-834
+src/types/shared.ts
+  h_cc604c9bda8355 121-161,164,172-173
+tests/chat/turn-changes.test.ts
+  h_cc604c9bda8355 1-213
+tests/settings/settings-nav.test.ts
+  h_cc604c9bda8355 1-122
+tests/shortcuts/shortcuts.test.ts
+  h_cc604c9bda8355 1-235
+tests/shortcuts/ui-settings.test.ts
+  h_cc604c9bda8355 1-108
+tests/theme/contrast.test.ts
+  h_cc604c9bda8355 1-50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a9ebb10f66e4ff8caf89c34f64e34a106d661ea9",
+  "prompts": {},
+  "humans": {
+    "h_cc604c9bda8355": {
+      "author": "lollipopnougat <ab2defg145@gmail.com>"
+    }
+  }
+}
