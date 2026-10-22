@@ -559,7 +559,7 @@ function McpEditModal({
           <button
             onClick={handleSave}
             disabled={!formName.trim()}
-            className="rounded bg-od-accent px-3 py-1 text-xs text-white hover:bg-od-accent/80 disabled:opacity-50"
+            className="rounded bg-od-accent px-3 py-1 text-xs text-white hover:bg-od-accent/80 active:bg-od-accent/65 disabled:opacity-50"
           >
             {t.saveProvider}
           </button>

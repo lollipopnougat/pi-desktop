@@ -64,7 +64,7 @@ export default function ConfirmDialog({
             onClick={onConfirm}
             disabled={loading}
             className={`flex items-center gap-1 rounded px-3 py-1 text-xs text-white transition-colors disabled:opacity-50 ${
-              danger ? 'bg-od-red hover:bg-od-red/80' : 'bg-od-accent hover:bg-od-accent/80'
+              danger ? 'bg-od-red hover:bg-od-red/80 active:bg-od-red/65' : 'bg-od-accent hover:bg-od-accent/80 active:bg-od-accent/65'
             }`}
           >
             {loading && <Icon name="spinner" spin className="w-3" />}

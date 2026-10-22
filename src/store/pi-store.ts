@@ -6,10 +6,17 @@ import type {
   SessionSlotSnapshot
 } from '../types/pi';
 import { applyTheme } from '../theme/applyTheme';
+import type { PendingFileRequest } from '../types/shared';
 // 流式消息不进 store：逐 token 写入会通知所有订阅者（见 lib/streaming-message.ts）
 import { setStreamingMessage } from '../lib/streaming-message';
 import { scheduleSessionRefresh } from '../lib/session-refresh';
 import { isExtendedMonacoThemeId, type ExtendedMonacoThemeId } from '../lib/monaco-themes';
+import {
+  DEFAULT_SHORTCUTS,
+  isShortcutActionId,
+  resolveShortcutMap,
+  type ShortcutMap
+} from '../lib/shortcuts';
 import {
   DEFAULT_COLOR_MODE,
   DEFAULT_THEME_FAMILY,
@@ -314,7 +321,7 @@ export interface PiState {
   /** 右侧工作区占满聊天区域（左侧会话栏保持原状态） */
   rightPanelMaximized: boolean;
   activeTab: string | null;
-  pendingFile: { path: string; mode: 'file' | 'diff'; toolCallId?: string; edits?: any[] } | null;
+  pendingFile: PendingFileRequest | null;
   /**
    * 「会话正在运行」停止执行确认框（切换/新建会话、fork、切换项目、退出前统一走这里）。
    * null = 不显示。由 src/lib/stopRunningConfirm.ts 驱动，App 根挂载唯一实例 StopRunningConfirm。
@@ -446,9 +453,7 @@ export interface PiState {
   setRightPanelOpen: (v: boolean) => void;
   setRightPanelMaximized: (v: boolean) => void;
   setActiveTab: (id: string | null) => void;
-  setPendingFile: (
-    f: { path: string; mode: 'file' | 'diff'; toolCallId?: string; edits?: any[] } | null
-  ) => void;
+  setPendingFile: (f: PendingFileRequest | null) => void;
   setSettingsOpen: (v: boolean) => void;
   setSidebarOpen: (v: boolean) => void;
   setTreeViewOpen: (v: boolean) => void;
@@ -501,6 +506,24 @@ export interface PiState {
   pendingChatInput: string | null;
   setPendingChatInput: (v: string | null) => void;
   setMcpStatusOpen: (v: boolean) => void;
+  // === 键盘快捷键 ===
+  /** 动作 id → 绑定串（空串 = 未分配）；持久化到 ui-config.json 的 shortcuts */
+  shortcuts: ShortcutMap;
+  /** 数字快捷键（Mod+1..9）的用途：切换右侧工作区标签 / 关闭 */
+  shortcutNumberKeys: 'workspace' | 'off';
+  /** 正在改键的动作 id：非空时全局快捷键监听让路，由设置页捕获按键 */
+  shortcutCaptureId: string | null;
+  /** 会话搜索弹窗开关（侧栏按钮与快捷键共用） */
+  sessionSearchOpen: boolean;
+  setSessionSearchOpen: (v: boolean) => void;
+  setShortcutCaptureId: (id: string | null) => void;
+  /** 改绑单个动作；传空串 = 未分配 */
+  setShortcut: (id: string, binding: string) => void;
+  /** 单个动作恢复默认值 */
+  resetShortcut: (id: string) => void;
+  /** 全部动作恢复默认值 */
+  resetAllShortcuts: () => void;
+  setShortcutNumberKeys: (v: 'workspace' | 'off') => void;
   setGoalSnapshot: (s: GoalSnapshot | null) => void;
   setSubagentSnapshot: (s: SubagentSnapshot | null) => void;
   addMessage: (msg: any) => void;
@@ -518,7 +541,7 @@ export interface PiState {
 // App 挂载后调用 loadUiSettings() 异步拉取真实值覆盖。
 export const FONT_SIZE_MIN = 12;
 export const FONT_SIZE_MAX = 999; // 不限制上限，仅作为 clamp 上界防止异常值
-export const FONT_SIZE_DEFAULT = 13;
+export const FONT_SIZE_DEFAULT = 14;
 export const SIDEBAR_WIDTH_MIN = 180;
 export const SIDEBAR_WIDTH_MAX = 480;
 export const SIDEBAR_WIDTH_DEFAULT = 240;
@@ -639,6 +662,10 @@ export interface UiSettings {
   notifyOnAsk?: boolean;
   // 权限沙箱策略（主进程 PermissionController 读同一份文件恢复）
   permissionPolicy?: PermissionPolicy;
+  /** 键盘快捷键：动作 id → 绑定串（空串 = 未分配；缺失的动作走默认值） */
+  shortcuts?: ShortcutMap;
+  /** 数字快捷键（Mod+1..9）的用途：切换右侧工作区标签 / 关闭 */
+  shortcutNumberKeys?: 'workspace' | 'off';
 }
 
 /** 数值字段的 clamp 边界，key 为 ui-config.json 字段名（不写显式类型，让 keyof 推断为字面量键集） */
@@ -662,7 +689,15 @@ const SETTING_STRING_KEYS = {
 };
 
 function saveSetting(key: keyof UiSettings, value: number | string | boolean) {
+  if (typeof window === 'undefined' || !window.pi?.setUiSettings) return;
   window.pi.setUiSettings({ [key]: value }).catch(() => {});
+}
+
+/** 写入非标量字段（对象/数组，如快捷键表）：整份替换，主进程侧是浅合并 */
+function saveSettings(patch: Record<string, unknown>) {
+  if (typeof window === 'undefined' || !window.pi?.setUiSettings) return;
+  // 这里的 patch 只用于对象字段（目前只有 shortcuts），宽类型到具体 UiSettings 需要一次转换
+  window.pi.setUiSettings(patch as Parameters<typeof window.pi.setUiSettings>[0]).catch(() => {});
 }
 
 /**
@@ -738,6 +773,15 @@ export function normalizeUiSettings(ui: UiSettings): Partial<UiSettings> {
     }
     if (field === 'notifyOnTurnEnd' && typeof value === 'boolean') patch.notifyOnTurnEnd = value;
     if (field === 'notifyOnAsk' && typeof value === 'boolean') patch.notifyOnAsk = value;
+    // 快捷键表：只认对象；逐动作校验（缺失补默认、空串保持未分配、非法回退默认）
+    if (field === 'shortcuts' && value && typeof value === 'object' && !Array.isArray(value)) {
+      patch.shortcuts = resolveShortcutMap(value);
+      continue;
+    }
+    if (field === 'shortcutNumberKeys' && (value === 'workspace' || value === 'off')) {
+      patch.shortcutNumberKeys = value;
+      continue;
+    }
     // 编辑器（Monaco）：布尔开关 + 主题枚举。漏掉这些分支会静默丢弃磁盘值、
     // 每次启动回退默认值（AGENTS.md 明确提醒过）
     if (field === 'monacoLigatures' && typeof value === 'boolean') patch.monacoLigatures = value;
@@ -800,7 +844,10 @@ const initialState = {
   sidebarOpen: true,
   treeViewOpen: false,
   sessionVersion: 0,
-  gitBranchVersion: 0
+  gitBranchVersion: 0,
+  // 非持久化的瞬时 UI 状态
+  shortcutCaptureId: null,
+  sessionSearchOpen: false
 };
 
 const initialPreferences = {
@@ -847,6 +894,9 @@ const initialPreferences = {
   todoPhases: [],
   askQuestions: null,
   askSessionId: null,
+  // 键盘快捷键：默认绑定 + 数字键默认切换右侧工作区标签（Mod+1..9）
+  shortcuts: { ...DEFAULT_SHORTCUTS },
+  shortcutNumberKeys: 'workspace' as 'workspace' | 'off',
   // 权限沙箱：默认自动审批安全指令（主进程侧同默认，loadUiSettings 后覆盖）
   permissionPolicy: 'auto-safe' as PermissionPolicy,
   pendingPermissionRequest: null,
@@ -1164,6 +1214,30 @@ export const usePiStore = create<PiState>((set, get) => ({
   },
   setPendingChatInput: (v) => set({ pendingChatInput: v }),
   setMcpStatusOpen: (v) => set({ mcpStatusOpen: v }),
+  // === 键盘快捷键 ===
+  setSessionSearchOpen: (v) => set({ sessionSearchOpen: v }),
+  setShortcutCaptureId: (id) => set({ shortcutCaptureId: id }),
+  setShortcut: (id, binding) => {
+    if (!isShortcutActionId(id)) return;
+    const next: ShortcutMap = { ...get().shortcuts, [id]: binding };
+    set({ shortcuts: next });
+    saveSettings({ shortcuts: next });
+  },
+  resetShortcut: (id) => {
+    if (!isShortcutActionId(id)) return;
+    const next: ShortcutMap = { ...get().shortcuts, [id]: DEFAULT_SHORTCUTS[id] ?? '' };
+    set({ shortcuts: next });
+    saveSettings({ shortcuts: next });
+  },
+  resetAllShortcuts: () => {
+    const next: ShortcutMap = { ...DEFAULT_SHORTCUTS };
+    set({ shortcuts: next });
+    saveSettings({ shortcuts: next });
+  },
+  setShortcutNumberKeys: (v) => {
+    saveSetting('shortcutNumberKeys', v);
+    set({ shortcutNumberKeys: v });
+  },
   setGoalSnapshot: (s) => set({ goalSnapshot: s }),
   setSubagentSnapshot: (s) => set({ subagentSnapshot: s }),
   setBackgroundTaskSnapshot: (s) => set({ backgroundTaskSnapshot: s }),

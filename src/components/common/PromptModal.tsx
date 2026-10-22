@@ -81,7 +81,7 @@ export default function PromptModal({
           </button>
           <button
             type="submit"
-            className="rounded-md bg-od-accent px-3 py-1.5 text-xs text-white transition-colors hover:bg-od-accent/80"
+            className="rounded-md bg-od-accent px-3 py-1.5 text-xs text-white transition-colors hover:bg-od-accent/80 active:bg-od-accent/65"
           >
             {confirmText}
           </button>

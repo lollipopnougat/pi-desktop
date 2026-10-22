@@ -144,7 +144,7 @@ export default function SessionInfoModal({ onClose }: SessionInfoModalProps) {
                   .then(setInfo)
                   .catch((e: any) => setError(e?.message || t.sessionInfoLoadFailed));
               }}
-              className="rounded bg-od-accent px-2 py-0.5 text-xs text-white hover:bg-od-accent/80"
+              className="rounded bg-od-accent px-2 py-0.5 text-xs text-white hover:bg-od-accent/80 active:bg-od-accent/65"
             >
               {t.reload}
             </button>

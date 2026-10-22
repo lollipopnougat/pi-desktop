@@ -15,6 +15,12 @@ import type { CodeTab } from '../../types/shared';
 // re-export 保持向后兼容
 export type { CodeTab };
 
+/**
+ * 旧的右侧代码面板实现，已被 `src/components/workspace/RightWorkspace.tsx` 取代（当前无挂载点）。
+ * 保留仅供参考：新增的 `pendingFile` 模式（review / 本轮改动 diff）只在新实现里支持，
+ * 需要复活本组件时必须同步补齐，否则点「审核」在这里不会有反应。
+ */
+
 interface CodePanelProps {
   open: boolean;
   onClose: () => void;

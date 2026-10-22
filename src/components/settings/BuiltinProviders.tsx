@@ -250,7 +250,7 @@ export default function BuiltinProviders({
                     <button
                       onClick={() => handleSaveBuiltinKey(p.id)}
                       disabled={!builtinApiKey.trim()}
-                      className="rounded bg-od-accent px-2 py-1 text-xs text-white hover:bg-od-accent/80 disabled:opacity-40"
+                      className="rounded bg-od-accent px-2 py-1 text-xs text-white hover:bg-od-accent/80 active:bg-od-accent/65 disabled:opacity-40"
                     >
                       {t.saveApiKey}
                     </button>

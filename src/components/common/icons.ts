@@ -88,6 +88,7 @@ import {
   faExpand, // 右侧工作区最大化
   faDownLeftAndUpRightToCenter, // 退出右侧工作区最大化
   faScaleBalanced, // 决策模型（classifier）
+  faKeyboard, // 键盘快捷键
   faScroll // 日志
 } from '@fortawesome/free-solid-svg-icons';
 
@@ -185,6 +186,7 @@ export const icons = {
   expand: faExpand,
   restore: faDownLeftAndUpRightToCenter,
   classifier: faScaleBalanced,
+  keyboard: faKeyboard,
   logs: faScroll
 };
 

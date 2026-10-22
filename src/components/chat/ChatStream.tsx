@@ -8,6 +8,8 @@ import { BookmarkRail } from './BookmarkRail';
 import ChatItemView from './ChatItemView';
 import StreamingTail from './StreamingTail';
 import PiWelcome from './PiWelcome';
+import TurnChangesCard from './TurnChangesCard';
+import { collectToolCallChanges } from '../../lib/turn-changes';
 import {
   buildChatItems,
   buildMessageItems,
@@ -54,6 +56,8 @@ const ChatTurnView = memo(function ChatTurnView({
         />
       ))}
       {tail}
+      {/* 本轮改动卡片：流式期间（本轮到 tail）不显示，轮次结束后一次性出现 */}
+      {!tail && turn.changes && <TurnChangesCard changes={turn.changes} />}
     </div>
   );
 });
@@ -80,13 +84,16 @@ const MessageList = memo(function MessageList({
   const goalHistory = usePiStore((s) => s.goalSnapshot?.goalHistory) ?? EMPTY_GOAL_HISTORY;
   // 历史前缀按 messages 引用记忆化：流式期间引用不变，增量部分只处理还在长的那条消息
   const state = useMemo<ChatItemBuildState>(() => buildMessageItems(messages), [messages]);
+  // 工具调用 → 该次调用产生的文件改动（edit/write），按轮聚合成「本次改动」卡片内容
+  const changeByToolCall = useMemo(() => collectToolCallChanges(messages), [messages]);
   const turns = useMemo(
     () =>
       groupChatItemsByTurn(
         // 非流式时一次性构建（含末尾收尾条目），与流式期间的「前缀 + 增量」等价
-        isStreaming ? state.items : buildChatItems(messages, null)
+        isStreaming ? state.items : buildChatItems(messages, null),
+        changeByToolCall
       ),
-    [state, messages, isStreaming]
+    [state, messages, isStreaming, changeByToolCall]
   );
   const tail = isStreaming ? (
     <StreamingTail state={state} sessionId={sessionId} onGrow={onStreamGrow} />
@@ -94,18 +101,23 @@ const MessageList = memo(function MessageList({
 
   return (
     <>
-      {turns.map((turn, index) => (
-        <ChatTurnView
-          key={`${sessionId}:${turn.key}`}
-          turn={turn}
-          sessionId={sessionId}
-          goalHistory={goalHistory}
-          onUserNode={onUserNode}
-          onTurnNode={onTurnNode}
-          tail={index === turns.length - 1 ? tail : null}
-        />
-      ))}
-      {isStreaming && turns.length === 0 && tail}
+      {/* 阅读宽度：窗口拉宽/收起右侧面板后，正文不要横跨整屏（约 90 字符/行）。
+          注意只能包住对话内容——PiWelcome 的 h-full 依赖滚动区这一层确定高度，
+          包进这个 const 高度为 auto 的 div 里会让欢迎页 logo 掉到顶部。 */}
+      <div className="mx-auto w-full max-w-[56rem]">
+        {turns.map((turn, index) => (
+          <ChatTurnView
+            key={`${sessionId}:${turn.key}`}
+            turn={turn}
+            sessionId={sessionId}
+            goalHistory={goalHistory}
+            onUserNode={onUserNode}
+            onTurnNode={onTurnNode}
+            tail={index === turns.length - 1 ? tail : null}
+          />
+        ))}
+        {isStreaming && turns.length === 0 && tail}
+      </div>
       {turns.length === 0 && !isStreaming && <PiWelcome key={sessionId} />}
     </>
   );

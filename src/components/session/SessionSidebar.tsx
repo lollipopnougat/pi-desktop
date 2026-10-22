@@ -7,9 +7,9 @@ import ContextMenu, { type MenuItem } from '../common/ContextMenu';
 import PromptModal from '../common/PromptModal';
 import ConfirmDialog from '../common/ConfirmDialog';
 import ProjectInfoModal from './ProjectInfoModal';
-import SessionSearchModal from './SessionSearchModal';
 import Icon from '../common/Icon';
 import { t } from '../../i18n/zh';
+import { sessionLabel } from '../../lib/session-label';
 import type { SessionGroup } from '../../types/shared';
 import type { SessionSlotSnapshot } from '../../types/pi';
 
@@ -60,7 +60,10 @@ export default function SessionSidebar() {
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; session: any } | null>(null);
   const [renameTarget, setRenameTarget] = useState<any | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>('modified');
-  const [searchOpen, setSearchOpen] = useState(false);
+  // 会话搜索弹窗由 App 渲染（侧栏折叠时宽度为 0 + overflow-hidden，会把弹窗裁掉），
+  // 开关放 store，侧栏按钮与 Mod+K 快捷键共用
+  const searchOpen = usePiStore((s) => s.sessionSearchOpen);
+  const setSearchOpen = usePiStore((s) => s.setSessionSearchOpen);
   /** 会话行 → 槽状态（按 sessionId 匹配，退而以会话文件路径匹配）：徽标靠它 */
   const slotBySession = useMemo(() => {
     const map = new Map<string, SessionSlotSnapshot>();
@@ -246,16 +249,6 @@ export default function SessionSidebar() {
   };
 
   // === 会话右键菜单操作 ===
-  const sessionLabel = (s: any) =>
-    s.name ||
-    // 空会话 SDK 给的是字面量 "(no messages)"，别把它当标题显示
-    (s.firstMessage && s.firstMessage !== '(no messages)'
-      ? s.firstMessage.substring(0, 40)
-      : t.sessionUnnamed) ||
-    s.id?.substring(0, 8) ||
-    s.pathBase ||
-    '会话';
-
   const handleCtxCopy = async (s: any) => {
     try {
       await window.pi.duplicateSession(s.path);
@@ -576,17 +569,6 @@ export default function SessionSidebar() {
         </div>
       </div>
 
-      {searchOpen && (
-        <SessionSearchModal
-          onClose={() => setSearchOpen(false)}
-          onSelect={(session) => {
-            setSearchOpen(false);
-            if (session.path !== usePiStore.getState().sessionFile) {
-              void handleSwitchSession(session);
-            }
-          }}
-        />
-      )}
       {ctxMenu && (
         <ContextMenu
           x={ctxMenu.x}
