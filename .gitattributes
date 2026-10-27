@@ -1,0 +1,29 @@
+# 换行符统一：仓库内存 LF，检出也一律 LF。
+# 与 .editorconfig（end_of_line = lf）、.prettierrc.json（endOfLine: "lf"）保持一致。
+#
+# 本文件的属性优先级高于全局 core.autocrlf：即使 Windows 上开着 autocrlf=true，
+# 也不会再把工作区文件转成 CRLF，从而避免「只是行尾不同」的假改动 / stat 缓存失配。
+* text=auto eol=lf
+
+# 二进制资源：明确不做文本转换（防止被 text=auto 误判后破坏文件）
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.icns binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.zip binary
+*.pdf binary
+
+# Windows 批处理必须 CRLF（cmd.exe 解析 LF 的 goto/标签有坑），目前仓库暂无此类文件，先立规矩
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# shell 脚本强制 LF（CRLF 会让 shebang 失效）
+*.sh text eol=lf
