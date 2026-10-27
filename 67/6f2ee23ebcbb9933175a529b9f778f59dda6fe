@@ -1,0 +1,19 @@
+.gitattributes
+  s_9803825d2c1a63::t_1554bebc4826c1 1-29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "676f2ee23ebcbb9933175a529b9f778f59dda6fe",
+  "prompts": {},
+  "sessions": {
+    "s_9803825d2c1a63": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a17e7e-7bd8-73b8-b60c-c2286ea53435",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "lollipopnougat <ab2defg145@gmail.com>"
+    }
+  }
+}
