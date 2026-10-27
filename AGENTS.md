@@ -76,13 +76,15 @@ Electron 主进程 (electron/)
 ### 关键路径与目录
 
 - **配置数据目录：`~/.pi-desktop/`**（桌面端独立目录，与 pi CLI 的 `~/.pi/agent` 完全隔离，不做任何迁移）
-  - `ui-config.json` —— UI 偏好（字号/面板宽度/终端字体/模式等，渲染进程经 `pi:getUiSettings` / `pi:setUiSettings` IPC 读写，见 `electron/ipc/settings-ipc.ts`）
+  - `ui-config.json` —— UI 偏好（字号/面板宽度/终端字体/模式/键盘快捷键表等，渲染进程经 `pi:getUiSettings` / `pi:setUiSettings` IPC 读写，见 `electron/ipc/settings-ipc.ts`）
   - `settings.json` —— SDK 配置（上下文压缩 compaction 等）
   - `models.json` —— 自定义 provider 配置（设置页增删）
   - `auth.json` —— 内置供应商凭证存储
   - `classifiers.json` —— 决策模型端点配置（`electron/classifier-config.ts`）
   - `hooks.json` —— 生命周期钩子（`electron/hooks/config.ts`）
   - `git-ai.json` —— git-ai 改动溯源（启用/路径/上报范围）
+  - `web-search.json` —— 内置网络搜索（开关/搜索源/条数/自建 SearXNG 地址，见 `electron/web-search/config.ts`）
+  - `subagents.json` —— 子智能体开关（`enabled`，关闭后不向 agent 注入 `task` 工具，见 `electron/subagents/config.ts`）
   - `mcp.json` / `mcp-cache.json` —— MCP 服务器配置与缓存
   - `models-store.json` —— SDK 模型清单缓存
   - `trust.json` —— 项目信任状态
@@ -104,7 +106,7 @@ Electron 主进程 (electron/)
 
 - 单一 Zustand store `usePiStore`，含 messages / model / availableModels / session 信息 / 会话槽投影（`sessionSlots`）/ UI 偏好等
 - **流式消息不在 store 里**：`src/lib/streaming-message.ts` 是模块级单槽（`setStreamingMessage` / `getStreamingMessage` / `subscribeStreamingMessage`，rAF 合帧 + `startTransition` 提交，清空时同步提交），组件用 `src/hooks/useStreamingMessage.ts` 订阅。**禁止把流式消息放回 store**（逐 token 全量 set 会让所有订阅者重渲染，这是 P1 优化前的性能根因）；`setSessionInfo` 会清空它
-- UI 偏好（fontSize、sidebarWidth、rightPanelWidth、themeFamily、monaco*/terminal*/notify* 等）持久化到 `~/.pi-desktop/ui-config.json`（经 `pi:setUiSettings` IPC），带 clamp 边界；启动时先用默认值，App 挂载后 `loadUiSettings()` 异步覆盖
+- UI 偏好（fontSize、sidebarWidth、rightPanelWidth、themeFamily、monaco*/terminal*/notify*、shortcuts/shortcutNumberKeys 等）持久化到 `~/.pi-desktop/ui-config.json`（经 `pi:setUiSettings` IPC），带 clamp 边界；启动时先用默认值，App 挂载后 `loadUiSettings()` 异步覆盖
 - 历史字段：`codePanelWidth` 已迁移为 `rightPanelWidth`；`fileTreeWidth` 仍持久化但由 `src/components/code/CodePanel.tsx` / `src/components/workspace/RightWorkspace.tsx` 直接读，不在 store 的 PiState 里
 - 常量：`FONT_SIZE_MIN=12`、`FONT_SIZE_MAX=999`（不限制上限）
 
@@ -172,38 +174,47 @@ Electron 主进程 (electron/)
 
 新增功能前先看这张表定位落点（主进程实现 / IPC / 渲染进程 / 设置页 tab）：
 
-| 功能 | 主进程 | IPC handler | 渲染进程 | 设置页 |
-|---|---|---|---|---|
-| 会话/分支/导出/会话槽 | `electron/session-slot.ts`、`electron/pi-bridge.ts`（槽容器）、`electron/ipc/session-ipc.ts`、`electron/session-access.ts` | `session-ipc.ts` | `src/components/session/**` | — |
-| 模型与供应商 | `electron/provider-config.ts`、`electron/model-presets.ts` | `model-ipc.ts` | `settings/ModelsTab.tsx`、`chat/ModelSelector.tsx` | 模型配置 |
-| 决策模型 | `electron/classifier-config.ts`、`electron/classifier/` | `classifier-ipc.ts` | `settings/ClassifierTab.tsx` | 决策模型 |
-| 权限沙箱 | `electron/permission/` | `permission-ipc.ts` | `chat/PermissionApprovalPanel.tsx` | 智能体配置 |
-| Goal / Plan | `electron/goal/`、`electron/plan/` | `goal-ipc.ts`、`plan-ipc.ts` | `components/goal/**`、`components/plan/**` | — |
-| 子 agent | `electron/subagents/` | `subagent-ipc.ts` | `components/subagents/**` | — |
-| 后台任务 | `electron/background-tasks/` | `background-task-ipc.ts` | `components/background-tasks/**` | — |
-| 记忆 | `electron/memory/` | `memory-ipc.ts` | `settings/MemoryTab.tsx` | 记忆系统 |
-| 钩子 | `electron/hooks/` | `hook-ipc.ts` | `settings/HooksTab.tsx` | 钩子 |
-| MCP | `electron/mcp/` | `mcp-ipc.ts` | `settings/McpTab.tsx` | MCP 服务器 |
-| 内置浏览器 | `electron/browser/` | `browser-ipc.ts` | `workspace/BrowserContent.tsx` | 浏览器 |
-| 终端 | `electron/ipc/terminal-ipc.ts` | `terminal-ipc.ts` | `components/terminal/**` | 界面（字体/shell） |
-| 技能 | `electron/ipc/skill-ipc.ts` | `skill-ipc.ts` | `settings/SkillsTab.tsx` | Skill 管理 |
-| 统计 / 日志 | `electron/statistics/`、`electron/logs/` | `statistics-ipc.ts`、`logs-ipc.ts` | `settings/StatisticsTab.tsx`、`settings/LogsTab.tsx` | 数据统计 / 日志 |
-| git-ai 溯源 | `electron/git-ai/` | `git-ai-ipc.ts` | `settings/GitAiSection.tsx` | 智能体配置 |
-| git 分支 | `electron/ipc/git-ipc.ts` | `git-ipc.ts` | `GitBranchButton.tsx` | — |
-| UI 偏好 | `electron/ipc/settings-ipc.ts` | `settings-ipc.ts` | 各处 | 界面 |
-| 关于 / 开源许可 | `electron/third-party-notices.ts`、`electron/main.ts`（菜单） | `misc-ipc.ts`（`pi:showAbout` / `pi:openThirdPartyNotices`） | `common/TitleMenuBar.tsx` | — |
-| 文件与外部应用 | `electron/project-path.ts`、`electron/external-apps.ts` | `misc-ipc.ts` | `components/code/**` | — |
-| 注入模型的自定义工具 | `electron/tools/` | —（随会话注入） | 各面板 | — |
+| 功能                  | 主进程                                                                                                                     | IPC handler                                                  | 渲染进程                                             | 设置页             |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------- | ------------------ |
+| 会话/分支/导出/会话槽 | `electron/session-slot.ts`、`electron/pi-bridge.ts`（槽容器）、`electron/ipc/session-ipc.ts`、`electron/session-access.ts` | `session-ipc.ts`                                             | `src/components/session/**`                          | —                  |
+| 模型与供应商          | `electron/provider-config.ts`、`electron/model-presets.ts`                                                                 | `model-ipc.ts`                                               | `settings/ModelsTab.tsx`、`chat/ModelSelector.tsx`   | 模型配置           |
+| 决策模型              | `electron/classifier-config.ts`、`electron/classifier/`                                                                    | `classifier-ipc.ts`                                          | `settings/ClassifierTab.tsx`                         | 决策模型           |
+| 权限沙箱              | `electron/permission/`                                                                                                     | `permission-ipc.ts`                                          | `chat/PermissionApprovalPanel.tsx`                   | 智能体配置         |
+| Goal / Plan           | `electron/goal/`、`electron/plan/`                                                                                         | `goal-ipc.ts`、`plan-ipc.ts`                                 | `components/goal/**`、`components/plan/**`           | —                  |
+| 子 agent              | `electron/subagents/`                                                                                                      | `subagent-ipc.ts`                                            | `components/subagents/**`、`settings/SubagentsSection.tsx` | 智能体配置         |
+| 后台任务              | `electron/background-tasks/`                                                                                               | `background-task-ipc.ts`                                     | `components/background-tasks/**`                     | —                  |
+| 记忆                  | `electron/memory/`                                                                                                         | `memory-ipc.ts`                                              | `settings/MemoryTab.tsx`                             | 记忆系统           |
+| 钩子                  | `electron/hooks/`                                                                                                          | `hook-ipc.ts`                                                | `settings/HooksTab.tsx`                              | 钩子               |
+| MCP                   | `electron/mcp/`                                                                                                            | `mcp-ipc.ts`                                                 | `settings/McpTab.tsx`                                | MCP 服务器         |
+| 内置浏览器            | `electron/browser/`                                                                                                        | `browser-ipc.ts`                                             | `workspace/BrowserContent.tsx`                       | 浏览器             |
+| 终端                  | `electron/ipc/terminal-ipc.ts`                                                                                             | `terminal-ipc.ts`                                            | `components/terminal/**`                             | 界面（字体/shell） |
+| 技能                  | `electron/ipc/skill-ipc.ts`                                                                                                | `skill-ipc.ts`                                               | `settings/SkillsTab.tsx`                             | Skill 管理         |
+| 统计 / 日志           | `electron/statistics/`、`electron/logs/`                                                                                   | `statistics-ipc.ts`、`logs-ipc.ts`                           | `settings/StatisticsTab.tsx`、`settings/LogsTab.tsx` | 数据统计 / 日志    |
+| git-ai 溯源           | `electron/git-ai/`                                                                                                         | `git-ai-ipc.ts`                                              | `settings/GitAiSection.tsx`                          | 智能体配置         |
+| 网络搜索（免 Key）     | `electron/web-search/`（config/http/providers/search）+ `electron/tools/web-search-tool.ts`                                 | `web-search-ipc.ts`                                          | `settings/WebSearchSection.tsx`                      | 智能体配置         |
+| git 分支              | `electron/ipc/git-ipc.ts`                                                                                                  | `git-ipc.ts`                                                 | `GitBranchButton.tsx`                                | —                  |
+| UI 偏好               | `electron/ipc/settings-ipc.ts`                                                                                             | `settings-ipc.ts`                                            | 各处                                                 | 界面               |
+| 键盘快捷键            | 纯渲染进程：`src/lib/shortcuts.ts`（绑定核心）、`src/lib/shortcut-commands.ts`（执行层）、`src/hooks/useGlobalShortcuts.ts`（全局监听） | —（无 IPC，绑定存 ui-config.json 的 `shortcuts`）             | `src/components/settings/ShortcutsTab.tsx`           | 键盘快捷键         |
+| 关于 / 开源许可       | `electron/third-party-notices.ts`、`electron/main.ts`（菜单）                                                              | `misc-ipc.ts`（`pi:showAbout` / `pi:openThirdPartyNotices`） | `common/TitleMenuBar.tsx`                            | —                  |
+| 文件与外部应用        | `electron/project-path.ts`、`electron/external-apps.ts`                                                                    | `misc-ipc.ts`                                                | `components/code/**`                                 | —                  |
+| 注入模型的自定义工具  | `electron/tools/`                                                                                                          | —（随会话注入）                                              | 各面板                                               | —                  |
 
 ## 设置页结构与新增配置项
 
 ### 设置页（`src/components/SettingsPage.tsx`）
 
-全屏浮层（`fixed inset-0 z-50`，必须让开标题栏 drag 区），左栏 tab 导航 + 右栏内容；11 个 tab 组件都在 `src/components/settings/`：
+全屏浮层（`fixed inset-0 z-50`，必须让开标题栏 drag 区），左栏分组导航（带设置搜索）+ 右栏内容；12 个 tab 组件都在 `src/components/settings/`：
 
-`界面 AppearanceTab` / `模型配置 ModelsTab` / `决策模型 ClassifierTab` / `智能体配置 AgentTab` / `浏览器 BrowserTab` / `记忆系统 MemoryTab` / `钩子 HooksTab` / `Skill 管理 SkillsTab` / `MCP 服务器 McpTab` / `数据统计 StatisticsTab` / `日志 LogsTab`
+`界面 AppearanceTab` / `键盘快捷键 ShortcutsTab` / `模型配置 ModelsTab` / `决策模型 ClassifierTab` / `智能体配置 AgentTab` / `记忆系统 MemoryTab` / `浏览器 BrowserTab` / `钩子 HooksTab` / `Skill 管理 SkillsTab` / `MCP 服务器 McpTab` / `数据统计 StatisticsTab` / `日志 LogsTab`
 
-`AgentTab.tsx` 由若干 `XxxSection` 组成（默认模型 / 待发送消息 / 图片识别 / 权限沙箱 / 全局自定义指令 / 上下文压缩 / git-ai 改动溯源），**新增分区就在 `AgentTab()` 里挂一个 `<XxxSection />`**。分区外壳照抄现有写法：
+**导航与搜索集中声明在 `src/components/settings/settings-nav.ts`**（左栏顺序 + 分组 + 搜索目录，纯数据 + 纯函数，有单测）：
+
+- `SETTINGS_GROUPS` —— 四组：界面与交互 / 模型与智能体 / 能力扩展 / 数据与诊断。**新增 tab 必须在这里登记**，否则左栏渲染不出来（`SettingsPage.tsx` 的 `TAB_CONTENT: Record<SettingsTabKey, ...>` 会强制补齐内容组件，但导航项漏登是静默的）
+- `SETTINGS_SEARCH_ENTRIES` —— 搜索目录，粒度是「分区」而非单个开关（逐项登记维护成本高且易腐化）。条目 `section` 必须是该 tab 内真实渲染的分区标题文案（取 `t.xxx`），命中后 `SettingsPage` 按标题文本在内容区找 `h1-h4` 定位、`scrollIntoView({ block: 'center' })` 滚动并加 `.settings-section-flash`（`src/index.css`）短暂高亮；写了不存在的标题不报错，只是退化成「只切到该 tab」
+- 条目 `title` 不能等于 tab 名：搜索结果里每个 tab 的第一行就是分组头（展示 tab 名、点击回该页顶部），重名会出现两行一样的文字（有单测守着）
+- 搜索输入框也局部关掉了全局 `input:focus` 的 accent 阴影（`focus:border-transparent focus:shadow-none`）——设置页搜索是常驻控件，蓝框太吵
+
+`AgentTab.tsx` 由若干 `XxxSection` 组成（默认模型 / 待发送消息 / 图片识别 / 网络搜索 / 子智能体 / 权限沙箱 / 全局自定义指令 / 上下文压缩 / git-ai 改动溯源），**新增分区就在 `AgentTab()` 里挂一个 `<XxxSection />`**。分区外壳照抄现有写法：
 
 - 标题块：`<div className="mb-2"><h3 className="text-xs font-semibold text-od-text">{t.x}</h3><div className="text-xs text-od-text-dim">{t.xDesc}</div></div>`
 - 卡片：`<div className="space-y-2 rounded border border-od-border bg-od-bg-alt px-3 py-2.5">`，行用 `flex items-center justify-between gap-3`
@@ -241,6 +252,13 @@ Electron 主进程 (electron/)
 - 新增图标先在 `icons.ts` 注册 `IconName`，再用 `<Icon name="xxx" />` 引用，不要内联 emoji 字符。
 - 若需在非 React 上下文（如 `dangerouslySetInnerHTML` 后的 DOM 操作）中使用图标，可取 FontAwesome 图标的官方 SVG path 数据（`faXxx.icon[4]`）构造 `<svg>`，不要自行编写 path。
 
+### 交互与可读性
+
+- **主题色板的对比度有回归测试**：`tests/theme/contrast.test.ts` 对 10 个主题族 × 明暗变体断言「正文/背景 ≥ 4.5」「选中文字/选中底色 ≥ 4.5」「次要文字/面板底 ≥ 4.0」（solarized 因官方配色本身低对比而豁免 dim 一项）。改 `src/theme/themes.ts` 后必须跑 `npx vitest run tests/theme`——历史上 6 个浅色主题的 `sel-text` 与 `sel-bg` 几乎同色，选中文字等于隐形
+- **按压反馈用背景透明度词汇**（与 hover 同一套）：实心主按钮 `hover:bg-od-accent/80 active:bg-od-accent/65`、危险按钮 `hover:bg-od-red/80 active:bg-od-red/65`、描边按钮 `hover:bg-od-bg-hover active:bg-od-border`、圆形按钮 `hover:opacity-80 active:opacity-70`。**不要给按钮加全局 `button:active { transform }` 规则**：会盖掉 `-translate-y-1/2` 这类定位类（base 层规则特异性更高），绝对定位的图标按钮会跳位
+- **聊天正文有阅读宽度约束，但只能包住「对话内容」**：`src/components/chat/ChatStream.tsx` 的 `MessageList` 里用 `mx-auto w-full max-w-[56rem]` 包 turn 列表（约 90 字符/行）；**`<PiWelcome />` 必须留在滚动区的直接子元素位置**——它的根节点是 `h-full`，一旦包进这个 `height:auto` 的 div 里，`h-full` 退化成内容高度，欢迎页 logo 就会掉到顶部（真实踩过的回归）。去掉宽度约束则宽屏/收起右侧面板后正文横跨整屏。设置页同理（`SettingsPage.tsx` 的 `max-w-5xl`）
+- **写不存在的 Tailwind 类不会报错、只是静默失效**（真实踩坑：`ChatInput.tsx` 用过 `text-md`，两个按钮一直在继承父级字号）。怀疑类名失效时用 `npx tailwindcss -i src/index.css -o /tmp/tw-out.css` 编译后 grep 目标类，或直接 grep 骨架类名清单核对
+
 ### 文案
 
 - 所有用户可见文案走 `src/i18n/zh.ts` 的 `t` 对象，函数式文案用工厂（如 `t.retrying(attempt, max)`）
@@ -252,6 +270,14 @@ Electron 主进程 (electron/)
 - 工具调用格式化对齐 pi TUI 风格：`[bash: ls -la]` / `[read: ~/src/foo.ts]` / `[edit: path]`
 - 每个节点显示：类型图标（FontAwesome）+ 类型标签（user/assistant/bash/...）+ 正文
 - 构建 `toolCallMap`（toolCallId → {name, arguments}）用于 toolResult 节点反查
+
+### 每轮改动预览（聊天卡片 + 右侧审核面板）
+
+- 数据层：`src/lib/turn-changes.ts` 的 `collectToolCallChanges(messages)` 扫消息得到 `toolCallId → 改动`，`groupChatItemsByTurn(items, changeByToolCall)` 再按轮聚合到 `ChatTurn.changes`（`ChatStream` 里按 `messages` 引用 memo）。**不从 toolExecutions 取**：历史会话没有现场事件，只能以消息为准
+- 两个来源：`edit` 取工具结果 `details.patch`（精确）；`write` 的 details 是 undefined，用入参 `path/content` 合成「整文件新增」patch（`kind: 'write'`，UI 标「写入」）。**bash / 外部进程的改动不在覆盖范围**
+- 完整前后内容：`src/lib/turn-diff.ts` 从当前文件倒序**反向应用**每个 patch（`src/lib/patch-utils.ts` 的 `revertPatch`，行号与 `+/-` 互换后 `applyPatch`）；任一 patch 对不上就返回 null，调用方退回 `reconstructFromPatch` 的片段渲染。**不要拼接同一文件的多个 patch**：它们各自基于不同时刻的文件内容
+- 聊天侧：`src/components/chat/TurnChangesCard.tsx` 渲染在 `ChatTurnView` 末尾，流式期间（该轮有 `tail`）不显示，轮次结束后一次性出现；点文件名 → `setPendingFile({ mode: 'diff', change })`，点「审核」→ `{ mode: 'review', changes }`
+- 右侧：`RightWorkspace` 消费 `pendingFile`（`PendingFileRequest`，定义在 `src/types/shared.ts`），review 生成 `type: 'review'` 的 `CodeTab`（`changes` 字段），由 `src/components/code/ReviewPanel.tsx` 渲染；审核 tab 激活时隐去文件树（自带文件列表，否则 diff 被挤没）
 
 ## 环境与平台
 
@@ -291,11 +317,16 @@ Electron 主进程 (electron/)
 - **配置目录必须保持 `~/.pi-desktop`**：`electron/config-dir.ts` 在模块加载时设置 `PI_CODING_AGENT_DIR` 环境变量（SDK 内部 getAgentDir/getSessionsDir 等默认路径的来源），它必须是 `main.ts` 的第一个 import。SDK 关键路径也显式传参（双保险）：`ModelRuntime.create({authPath, modelsPath})`、`SessionManager.create(cwd, getSessionDir(cwd))`、`createAgentSessionServices({agentDir})`。注意 `SessionManager.listAll()` 不传参，走 SDK 默认 getSessionsDir()（已被 env var 重定向）。新增 SDK 调用时优先显式传参，避免静默落回 `~/.pi/agent`
 - **UI 偏好持久化走 `~/.pi-desktop/ui-config.json`**（`pi:getUiSettings` / `pi:setUiSettings` IPC），严禁再往 localStorage 写 UI 配置
 - **新增 UI 偏好字段必须多处同步**（漏一处即出隐蔽 bug）：`src/store/pi-store.ts` 五处（`PiState` 字段 + action 类型声明、`UiSettings` 接口、`normalizeUiSettings` 校验、`initialPreferences` 默认值、action 实现）、`src/types/pi.d.ts` 的 `UiSettings` 第二份接口声明、设置页组件 + `src/i18n/zh.ts` 文案。**漏掉 `normalizeUiSettings` 校验会静默丢弃磁盘值、每次启动回退默认值**（布尔字段加 `typeof value === 'boolean'` 分支）。`preload.ts` / `electron/ipc/settings-ipc.ts` 通用透传，无需改动
+- **新增一个快捷键动作要同步四处**：`src/lib/shortcuts.ts` 的 `SHORTCUT_ACTIONS`（id / 分类 / 默认绑定）、`src/lib/shortcut-commands.ts` 的 `switch` 分支（真正干活，**从 `usePiStore.getState()` 取执行时状态**）、`src/i18n/zh.ts` 的 `shortcutActionText`（缺了 `tests/shortcuts` 的文案覆盖测试会红）、`tests/shortcuts/*` 的默认值冲突/可绑定断言。绑定表存在 `ui-config.json` 的 `shortcuts`（动作 id → `Mod+Shift+T` 这类串，空串 = 未分配），由 `resolveShortcutMap` 逐项校验（缺失补默认、非法回退默认）。三条硬约定：
+  - **监听必须挂在 window 的 capture 阶段**（`src/hooks/useGlobalShortcuts.ts`），每次 keydown 现读 store，改键立即生效、不重订阅；
+  - **改键录制期间 store 的 `shortcutCaptureId` 必须非空**（`ShortcutsTab` 负责设置/清理），否则「按 ⌘N 改键」会顺手新建会话；录制里用 `stopImmediatePropagation()`（同一元素上的多个 window 监听只有它能挡住后续监听，`stopPropagation()` 挡不住）；
+  - **不要让组件本地状态承担快捷键入口**：能改 store 的直接改（如会话搜索弹窗 `sessionSearchOpen` 从侧栏移到 App 渲染——侧栏折叠时宽度为 0 + `overflow-hidden` 会把弹窗裁掉）；只有右侧工作区标签顺序这类纯 local state 才走 `src/lib/app-commands.ts` 的 `onSelectWorkspaceTab` 总线。
 - **严禁使用 emoji 作为图标**：所有图标一律用 FontAwesome（经 `src/components/common/icons.ts` 注册），不要在代码里出现 emoji 字符
 - **`agent_end.messages` 不是完整历史**：只允许增量合并；完整加载必须使用绑定会话版本的消息快照分页。
 - **全屏浮层必须让开标题栏的 drag 区，否则顶部 40px 内的控件静默失效**：标题栏（`src/App.tsx` 里 `WebkitAppRegion: 'drag'` 的 40px 条）是 `-webkit-app-region: drag` 区域，而 **drag 区域会吞掉所有指针事件**（Electron 官方文档：与 drag 区重叠的按钮不触发 click / mouseenter，光标也不走 CSS），表现为「控件点不动 + 光标显示为系统箭头」，不报错也极难排查。两条修法二选一：① `fixed inset-0` 容器加 `paddingTop: darwin ? 38 : 32`，把内容压到带下方（`src/components/SettingsPage.tsx`、`src/components/background-tasks/BackgroundTaskPanel.tsx`、`src/components/subagents/SubagentRunDetailModal.tsx` 用的是这个）；② 浮层根节点加 `style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}`，把整层矩形从 drag 区里挖出来（`src/components/chat/ImageLightbox.tsx` 用的是这个；副作用是浮层打开期间无法拖动窗口，macOS 红绿灯不受影响）。**已验证：`no-drag` 是几何减法而非只管子元素，盖在 drag 区上方的更高 z-index 兄弟节点同样能把那块矩形挖掉**
 - **新增 IPC 必须三处同步**：`pi-bridge.ts` handler + `preload.ts` 暴露 + `pi.d.ts` 类型
 - **git-ai 是可选的外部依赖，路径解析禁用 `process.env.HOME`**：`electron/git-ai/extension.ts` 经 `resolveGitAiBin()`（`electron/git-ai/paths.ts`）按 设置页 `binPath` → `PI_DESKTOP_GIT_AI_BIN` → `os.homedir()/.git-ai/bin/git-ai(.exe)` → PATH 的顺序解析。Windows GUI 进程没有 `HOME` 环境变量（只有 `USERPROFILE`），用 `process.env.HOME` 会拼出 `undefined/.git-ai/bin/git-ai` 并静默 ENOENT（`docs/report.md` 记录过这个线上问题）。只有「本应可用」时（配置/环境变量显式指定，或默认安装位置存在）才 `console.warn` 一次，避免没装 git-ai 的用户被刷屏。扩展每次事件读一次 `~/.pi-desktop/git-ai.json`，所以设置页改动即时生效。回归测试：`tests/git-ai/*`
+- **内置网络搜索全是免 Key 源，改 provider 前先看实测结论**：`electron/web-search/providers.ts` 里的 5 个源（Parallel 免 Key MCP / Bing / Brave / 360 / 自建 SearXNG）是 2026-10 实测可用的；DuckDuckGo（202 + anomaly-modal）、Mojeek（验证码）、Google（结果页纯 JS 渲染）、SearXNG 公共实例（全部关 `format=json`）、Ecosia/Startpage/Yahoo/Sogou（403/超时/500）都不可用，Firecrawl keyless 与 Exa 免 Key MCP 共享 IP 额度经常 429 —— 不要重新加回去。抓 HTML 的三个源是**网页抓取**（无官方免费 API），解析器必须是纯函数并被 `tests/web-search/providers.test.ts` 的 fixture 覆盖；结构一变只会静默返回 0 条，所以 `runWebSearch` 把「空结果」当失败继续降级。开关走 `~/.pi-desktop/web-search.json` 的 `enabled`，`PiBridge.syncWebSearchTool` 用 `setActiveToolsByName` 注入/移除（关闭后模型看不到该工具），设置页保存后经 `applyWebSearchConfig()` 同步所有槽；`web_search` 已加入 `permission/policy.ts` 的 `SAFE_TOOL_NAMES`（只读，仅向外发查询词）
 - **默认关闭的能力**：内置浏览器 `browserEnabled`、DevTools 捕获 `browserDevtoolsEnabled`（含任意 JS 执行与 CDP 抓包）、日志 `logConfig.enabled` 默认关；记忆、git-ai、通知默认开（通知默认仅失焦）。改默认值要同步 README 与设置页文案
 - **`electron/sandbox-extension.ts` 是占位实现**，未接入 `pi-bridge.ts`，不要以为沙箱已经生效
 - **统计扫描跑在 worker 线程**：`electron/statistics/usage-worker.ts` 是 `vite.config.ts` 里的额外构建入口，增删主进程入口时要同步 `vite.config.ts` 与打包 `files`/`asarUnpack`

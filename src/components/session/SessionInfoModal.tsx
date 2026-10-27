@@ -99,10 +99,11 @@ export default function SessionInfoModal({ onClose }: SessionInfoModalProps) {
   const activeTools = info?.tools.filter((x) => x.active) ?? [];
   const inactiveTools = info?.tools.filter((x) => !x.active) ?? [];
 
-  const tabs: { key: InfoTab; label: string; count: number }[] = info
+  // count 省略 = 不显示数字（系统提示词只有一段，数字没有意义）
+  const tabs: { key: InfoTab; label: string; count?: number }[] = info
     ? [
-        { key: 'prompt', label: t.sessionInfoSystemPrompt, count: info.systemPrompt ? 1 : 0 },
-        { key: 'tools', label: t.sessionInfoTools, count: info.tools.length },
+        { key: 'prompt', label: t.sessionInfoSystemPrompt },
+        { key: 'tools', label: t.sessionInfoTools, count: activeTools.length },
         {
           key: 'skills',
           label: t.sessionInfoSkills,
@@ -193,7 +194,9 @@ export default function SessionInfoModal({ onClose }: SessionInfoModalProps) {
                     <Icon name="brain" className="w-3" />
                   )}
                   {tab.label}
-                  {tab.count > 0 && <span className="text-od-text-dim">({tab.count})</span>}
+                  {typeof tab.count === 'number' && tab.count > 0 && (
+                    <span className="text-od-text-dim">({tab.count})</span>
+                  )}
                 </button>
               ))}
             </div>

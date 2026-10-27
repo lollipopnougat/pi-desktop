@@ -235,6 +235,49 @@ describe('PiBridge runtime lifecycle', () => {
     expect(bridge.sessionFor().requireSession().sessionId).toBe('A2');
   });
 
+  it('injects the subagent task tool by config and removes it on every slot when disabled', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'subagent-config-'));
+    const file = path.join(dir, 'subagents.json');
+    process.env.PI_SUBAGENT_CONFIG = file;
+    try {
+      const { bridge, old } = await makeBridge();
+      // 默认开启：建会话时就把 task 注入活跃工具
+      expect(old.session.setActiveToolsByName).toHaveBeenCalledWith(['task']);
+
+      // 设置页关闭：所有槽（含后台槽）立即移除 task，无需重建会话
+      fs.writeFileSync(file, JSON.stringify({ enabled: false }), 'utf-8');
+      old.session.getActiveToolNames = () => ['read', 'task'];
+      old.session.setActiveToolsByName.mockClear();
+      bridge.applySubagentConfig();
+      expect(old.session.setActiveToolsByName).toHaveBeenCalledWith(['read']);
+      expect(old.session.setActiveToolsByName).toHaveBeenCalledTimes(1);
+
+      // 重新开启：加回去（且不重复加）
+      fs.writeFileSync(file, JSON.stringify({ enabled: true }), 'utf-8');
+      old.session.getActiveToolNames = () => ['read'];
+      old.session.setActiveToolsByName.mockClear();
+      bridge.applySubagentConfig();
+      expect(old.session.setActiveToolsByName).toHaveBeenCalledWith(['read', 'task']);
+
+      // 已经是目标状态时不重复调用 setActiveToolsByName
+      old.session.getActiveToolNames = () => ['read', 'task'];
+      old.session.setActiveToolsByName.mockClear();
+      bridge.applySubagentConfig();
+      expect(old.session.setActiveToolsByName).not.toHaveBeenCalled();
+
+      // 「重新加载会话」会把注即激活的扩展工具（task）重新放回活跃集：
+      // resyncToolVisibility 必须把它再收掉，否则关闭状态会被 reload 复活
+      fs.writeFileSync(file, JSON.stringify({ enabled: false }), 'utf-8');
+      old.session.getActiveToolNames = () => ['read', 'task'];
+      old.session.setActiveToolsByName.mockClear();
+      bridge.resyncToolVisibility(bridge.sessionFor());
+      expect(old.session.setActiveToolsByName).toHaveBeenCalledWith(['read']);
+    } finally {
+      delete process.env.PI_SUBAGENT_CONFIG;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('makes quit idempotent and awaits asynchronous cleanup before disconnecting MCP', async () => {
     const { bridge, old } = await makeBridge();
     const browser = deferred();

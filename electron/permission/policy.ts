@@ -47,6 +47,7 @@ export function isPermissionPolicy(v: unknown): v is PermissionPolicy {
  * - ask：向用户提问，纯交互（用户本身就是审批权威）
  * - update_plan：只更新前端 Todo 面板内存状态
  * - read_img：读图片文件 + 调视觉模型生成描述（只读，消耗少量 token）
+ * - web_search：内置免 Key 网络搜索（只读，仅向外发查询词，不改本地任何东西）
  * - memory_search：检索持久记忆（只读）
  * - goal_complete/goal_blocked：目标状态上报，仍由 goal runtime 校验
  * - propose_plan：进入独立的方案审批流程，避免重复工具审批
@@ -62,6 +63,7 @@ export const SAFE_TOOL_NAMES = new Set([
   'ask',
   'update_plan',
   'read_img',
+  'web_search',
   'memory_search',
   'memory_read',
   'goal_complete',

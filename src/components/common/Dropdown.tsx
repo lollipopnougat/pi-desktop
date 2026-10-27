@@ -133,6 +133,10 @@ export default function Dropdown({
   const listRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  // 高亮项要不要滚进视野：只有「打开面板 / 键盘导航」把高亮移走时才滚。
+  // 鼠标悬停也改高亮，若跟着滚动就会连锁：悬停 → 滚动 → 新的一行滑到光标下 → 再悬停 → 再滚动，
+  // 表现为光标停在列表上下边缘时内容自己一直滚。
+  const scrollActiveRef = useRef(false);
   const listboxId = useId();
 
   // groups 在前 + 平铺 options，构成唯一的展示顺序（键盘导航也按这个平铺顺序）
@@ -213,6 +217,7 @@ export default function Dropdown({
 
   const openMenu = () => {
     const selected = flatOptions.findIndex((o) => o.value === value && !o.disabled);
+    scrollActiveRef.current = true;
     setOpen(true);
     setActiveIndex(selected >= 0 ? selected : flatOptions.findIndex((o) => !o.disabled));
   };
@@ -232,6 +237,7 @@ export default function Dropdown({
       i = (i + delta + flatOptions.length) % flatOptions.length;
       if (!flatOptions[i].disabled) break;
     }
+    scrollActiveRef.current = true;
     setActiveIndex(i);
   };
 
@@ -264,10 +270,12 @@ export default function Dropdown({
         break;
       case 'Home':
         e.preventDefault();
+        scrollActiveRef.current = true;
         setActiveIndex(flatOptions.findIndex((o) => !o.disabled));
         break;
       case 'End':
         e.preventDefault();
+        scrollActiveRef.current = true;
         setActiveIndex(
           flatOptions.length - 1 - [...flatOptions].reverse().findIndex((o) => !o.disabled)
         );
@@ -283,11 +291,14 @@ export default function Dropdown({
     }
   };
 
-  // 打开时聚焦搜索框；高亮项滚进可视区（只滚列表，不用 scrollIntoView，避免连带滚动设置页容器）
+  // 打开时聚焦搜索框；键盘导航后高亮项滚进可视区（只滚列表，不用 scrollIntoView，避免连带滚动设置页容器）。
+  // 鼠标悬停引起的高亮变化不滚动，见 scrollActiveRef 的注释。
   useEffect(() => {
     if (!open) return;
     measure();
     if (searchable) searchRef.current?.focus();
+    if (!scrollActiveRef.current) return;
+    scrollActiveRef.current = false;
     const list = listRef.current;
     const item = itemRefs.current[activeIdx];
     if (list && item) {
@@ -406,6 +417,8 @@ export default function Dropdown({
                     aria-selected={row.option.value === value}
                     disabled={row.option.disabled}
                     onMouseEnter={() => {
+                      // 只改高亮，不滚动列表（滚动位置由用户自己的滚轮/滚动条决定）
+                      scrollActiveRef.current = false;
                       if (!row.option.disabled) setActiveIndex(row.index);
                     }}
                     onClick={() => pick(row.option.value)}
