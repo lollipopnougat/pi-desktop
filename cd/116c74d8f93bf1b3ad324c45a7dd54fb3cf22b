@@ -1,0 +1,14 @@
+src/components/common/Dropdown.tsx
+  h_cc604c9bda8355 136-139,220,240,273,278,294-295,300-301,420-421
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cd116c74d8f93bf1b3ad324c45a7dd54fb3cf22b",
+  "prompts": {},
+  "humans": {
+    "h_cc604c9bda8355": {
+      "author": "lollipopnougat <ab2defg145@gmail.com>"
+    }
+  }
+}
