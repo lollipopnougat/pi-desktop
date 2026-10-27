@@ -116,6 +116,8 @@ export interface MentionItem {
   label: string;
   detail?: string;
   value: string;
+  /** @ 提及里的目录条目：选中后不关闭下拉，而是继续列它的子项 */
+  isDirectory?: boolean;
 }
 
 /**

@@ -39,14 +39,17 @@ export function goalExtensionFactory(controller: GoalController): InlineExtensio
         const goal = controller.rt.goal;
         if (!goal) return;
 
-        // 判定 run origin:输入文本是否是续跑 marker
-        const isContinuation = rt.isOwnContinuation(event.prompt);
+        // 判定 run origin:输入文本是否是续跑 marker。
+        // 注意:SDK 1.2.0 起本事件是 user | custom 联合(自定义消息 + triggerTurn 也会触发),
+        // 只有 user run 带 prompt;custom run 不可能是自己的续跑 → 按 manual 记账。
+        const prompt = event.messageType === 'user' ? event.prompt : '';
+        const isContinuation = prompt !== '' && rt.isOwnContinuation(prompt);
         const origin = isContinuation ? 'automatic' : 'manual';
         rt.beginAgentRun(origin);
 
         // 认领续跑票据
         if (isContinuation) {
-          rt.claimContinuation(event.prompt);
+          rt.claimContinuation(prompt);
         }
 
         // 注入 goal 系统提示(每轮重新拼接,SDK 自动合并)

@@ -106,6 +106,22 @@ body,
   background: rgb(var(--od-border-light));
 }
 
+/* 书签竖条：hover 只拉宽 + 发光，**不改高度**。
+ * 一旦改高度，书签栏的 justify-center 会让整栏重新居中，悬停预览浮层就会和书签错位。
+ * 宽度变化比 .w-3 的优先级高（选择器多两级），所以不需要内联样式。 */
+.bookmark-chip {
+  width: 12px;
+  transition:
+    width 150ms ease-out,
+    opacity 150ms ease-out,
+    box-shadow 150ms ease-out;
+}
+.bookmark-bar:hover .bookmark-chip {
+  width: 18px;
+  opacity: 1;
+  box-shadow: 0 0 6px currentColor;
+}
+
 /* ===== 输入框 focus 样式统一 =====
  * 移除浏览器默认 outline，用主题蓝色边框高亮。
  */

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { diffLines } from 'diff';
 import Icon from '../common/Icon';
+import Disclosure from '../common/Disclosure';
 import { t } from '../../i18n/zh';
 import type {
   MemoryCandidate,
@@ -74,10 +75,7 @@ export default function MemoryReviewSection({
           {error}
         </p>
       )}
-      <details>
-        <summary className="cursor-pointer text-od-text-bright">
-          {t.memory.candidatesTitle(status.candidates.length)}
-        </summary>
+      <Disclosure title={t.memory.candidatesTitle(status.candidates.length)} indent>
         <p className="my-1 text-od-text-dim">{t.memory.candidateHint}</p>
         {status.candidates.map((c) => (
           <button
@@ -90,9 +88,8 @@ export default function MemoryReviewSection({
             {t.memory.changedFiles(c.changes.length)}
           </button>
         ))}
-      </details>
-      <details>
-        <summary className="cursor-pointer text-od-text-bright">{t.memory.searchSources}</summary>
+      </Disclosure>
+      <Disclosure title={t.memory.searchSources} indent>
         <form
           className="my-2 flex gap-1"
           onSubmit={(e) => {
@@ -139,20 +136,20 @@ export default function MemoryReviewSection({
             <p className="text-od-text-dim">{t.memory.sourceHint}</p>
             {!entry.sources.length && <p className="text-od-text-dim">{t.memory.noSource}</p>}
             {entry.sources.map((source) => (
-              <details key={source.id}>
-                <summary className="cursor-pointer break-all text-od-accent">
-                  {source.session || source.id} · {source.sourceTime || t.memory.unknownDate}
-                </summary>
+              <Disclosure
+                key={source.id}
+                truncate={false}
+                title={`${source.session || source.id} · ${source.sourceTime || t.memory.unknownDate}`}
+              >
                 <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs text-od-text">
                   {source.content}
                 </pre>
-              </details>
+              </Disclosure>
             ))}
           </div>
         )}
-      </details>
-      <details>
-        <summary className="cursor-pointer text-od-text-bright">{t.memory.historyTitle}</summary>
+      </Disclosure>
+      <Disclosure title={t.memory.historyTitle} indent>
         <p className="my-1 text-od-text-dim">{t.memory.rollbackHint}</p>
         {status.history.map((h) => (
           <button
@@ -169,10 +166,9 @@ export default function MemoryReviewSection({
             {t.memory.previewRollback}
           </button>
         ))}
-      </details>
+      </Disclosure>
       {!!status.legacyProjects.length && (
-        <details>
-          <summary className="cursor-pointer text-od-orange">{t.memory.legacyTitle}</summary>
+        <Disclosure title={t.memory.legacyTitle} tone="warning" indent>
           <p className="my-1 text-od-text-dim">{t.memory.legacyHint}</p>
           {status.legacyProjects.map((name) => (
             <button
@@ -188,7 +184,7 @@ export default function MemoryReviewSection({
               {t.memory.previewMigration(name)}
             </button>
           ))}
-        </details>
+        </Disclosure>
       )}
       {status.unassignedExtractions > 0 && (
         <p className="text-od-orange">
@@ -261,10 +257,7 @@ export default function MemoryReviewSection({
                         )
                       )}
                     </pre>
-                    <details>
-                      <summary className="cursor-pointer text-xs text-od-accent">
-                        {t.memory.correctCandidate}
-                      </summary>
+                    <Disclosure title={t.memory.correctCandidate} indent>
                       <textarea
                         aria-label={t.memory.correctFile(change.file)}
                         value={edits[change.file] ?? change.after}
@@ -273,7 +266,7 @@ export default function MemoryReviewSection({
                         }
                         className="mt-2 h-40 w-full rounded border border-od-border bg-od-bg p-2 font-mono text-xs text-od-text"
                       />
-                    </details>
+                    </Disclosure>
                   </div>
                 ))}
               </div>

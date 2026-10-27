@@ -1449,6 +1449,8 @@ export interface PiAPI {
     stop(tabId?: string): Promise<BrowserTabState>;
     setViewport(viewport: BrowserViewport): Promise<{ ok: boolean }>;
     setVisible(visible: boolean): Promise<{ ok: boolean }>;
+    /** 截当前标签画面（data URL）；浮层遮挡时当静态底图用 */
+    capture(): Promise<string | null>;
     clearData(): Promise<{ ok: boolean }>;
   };
   onBrowserStateChanged(cb: (state: BrowserState) => void): () => void;

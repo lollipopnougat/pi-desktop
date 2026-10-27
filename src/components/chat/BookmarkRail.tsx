@@ -5,14 +5,21 @@ import { normalizeWhitespace } from './chat-utils';
 
 type BookmarkData = { timestamp: number; content: string };
 
+/** 预览浮层与聊天区上下边界的留白（≈ 半个浮层高，避开 ChatStream 的 overflow-hidden） */
+const CARD_EDGE = 16;
+/** 浮层左边缘：书签栏宽 20px + 与竖条之间 6px 空隙（不贴住竖条） */
+const CARD_LEFT = 26;
+
 /**
  * 左侧书签栏：根据用户消息在会话中的位置（按时间顺序），
  * 在垂直方向按比例放置窄矩形书签。
- * - 默认：窄竖条（4px 宽），hover 时向右拉出展示消息内容（带动画）。
+ * - 默认：窄竖条（6px 高、12px 宽），hover 时只拉宽 + 发光（**不改高度**）。
+ *   高度一变整栏（justify-center）就会重新居中，书签与预览浮层会错位。
  * - 点击：滚动到对应用户消息。
  * - 用户消息或其后续模型回复、思考、工具活动可见时，对应书签显示为黄色。
- * - 书签数超过可视高度（长会话）时整栏可滚动：滚动条 4px 细条，不挤占内容；
- *   悬停预览卡片放在滚动容器之外渲染，否则会被 overflow 裁掉。
+ * - 悬停预览是一个**独立的小浮层**：与竖条留 6px 空隙、四角圆角、不贴边、不可点击，
+ *   垂直居中于当前书签。它渲染在滚动容器之外，避免被 overflow 裁掉。
+ * - 书签数超过可视高度（长会话）时整栏可滚动：滚动条 4px 细条，不挤占内容。
  */
 export function BookmarkRail({
   userMessages,
@@ -26,6 +33,7 @@ export function BookmarkRail({
   onJump: (timestamp: number) => void;
 }) {
   const [visibleBookmarks, setVisibleBookmarks] = useState<ReadonlySet<number>>(() => new Set());
+  const railRef = useRef<HTMLDivElement>(null);
   const stripRef = useRef<HTMLDivElement>(null);
   const barRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -107,18 +115,24 @@ export function BookmarkRail({
       strip.scrollTop = bottom - strip.clientHeight + 8;
   }, [bookmarks, visibleBookmarks]);
 
+  // 浮层定位只读「书签当前的静态几何」：书签 hover 时不改尺寸、整栏不会重新居中，
+  // 所以进入时量一次就永远对齐（旧实现 hover 变高 → 重新居中 → 浮层与书签错位）。
   const handleHover = useCallback((timestamp: number, el: HTMLElement | null) => {
-    const strip = stripRef.current;
     if (hideTimerRef.current) {
       clearTimeout(hideTimerRef.current);
       hideTimerRef.current = null;
     }
-    if (!el || !strip) {
-      // 预览卡片在滚动容器之外，从竖条移到卡片会经过空隙：延迟隐藏，允许鼠标移入卡片
-      hideTimerRef.current = setTimeout(() => setHovered(null), 160);
+    const rail = railRef.current;
+    if (!el || !rail) {
+      // 相邻书签之间只有 4px 空隙，延迟隐藏可以避免来回移动时闪烁。
+      hideTimerRef.current = setTimeout(() => setHovered(null), 120);
       return;
     }
-    setHovered({ timestamp, top: el.offsetTop + el.offsetHeight / 2 - strip.scrollTop });
+    const railRect = rail.getBoundingClientRect();
+    const barRect = el.getBoundingClientRect();
+    const center = barRect.top - railRect.top + barRect.height / 2;
+    const top = Math.min(Math.max(center, CARD_EDGE), railRect.height - CARD_EDGE);
+    setHovered({ timestamp, top });
   }, []);
 
   useEffect(() => {
@@ -127,19 +141,13 @@ export function BookmarkRail({
     };
   }, []);
 
-  const cancelHide = useCallback(() => {
-    if (hideTimerRef.current) {
-      clearTimeout(hideTimerRef.current);
-      hideTimerRef.current = null;
-    }
-  }, []);
-
   const hoveredBookmark = hovered
     ? bookmarks.find((bm) => bm.timestamp === hovered.timestamp)
     : undefined;
 
   return (
     <div
+      ref={railRef}
       className="pointer-events-none absolute left-0 top-0 z-10 flex h-full w-5 flex-col items-start py-2"
       aria-label={t.showBookmarks}
     >
@@ -164,24 +172,17 @@ export function BookmarkRail({
           ))}
         </div>
       </div>
-      {/* 预览卡片：渲染在滚动容器之外，避免被 overflow 裁剪 */}
+      {/* 悬停预览：独立小浮层（不贴住竖条、不可点击），渲染在滚动容器之外避免被裁剪 */}
       {hoveredBookmark && hovered && (
-        <button
-          type="button"
-          aria-label={truncate(normalizeWhitespace(hoveredBookmark.content), 160)}
-          onClick={() => {
-            onJump(hoveredBookmark.timestamp);
-            setHovered(null);
-          }}
-          onMouseEnter={cancelHide}
-          onMouseLeave={() => setHovered(null)}
-          className="pointer-events-auto absolute left-4 z-20 flex max-w-[240px] items-center overflow-hidden rounded-r-md border border-l-0 border-od-border bg-od-bg-alt px-2 py-1 text-xs text-od-text shadow-lg"
-          style={{ top: hovered.top, transform: 'translateY(-50%)' }}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute z-30 flex max-w-[240px] items-center rounded-md border border-od-border bg-od-bg-alt px-2 py-1 text-xs text-od-text shadow-lg"
+          style={{ left: CARD_LEFT, top: hovered.top, transform: 'translateY(-50%)' }}
         >
           <span className="truncate">
             {truncate(normalizeWhitespace(hoveredBookmark.content), 160)}
           </span>
-        </button>
+        </div>
       )}
     </div>
   );
@@ -204,8 +205,6 @@ const BookmarkBar = memo(function BookmarkBar({
   onHover: (timestamp: number, el: HTMLElement | null) => void;
   register: (timestamp: number, el: HTMLDivElement | null) => void;
 }) {
-  const [hovered, setHovered] = useState(false);
-  const BAR_H = 28; // 窄竖条高度
   const color = visible ? 'var(--od-yellow)' : 'var(--od-accent)';
   const setRef = useCallback(
     (el: HTMLDivElement | null) => register(bm.timestamp, el),
@@ -213,38 +212,30 @@ const BookmarkBar = memo(function BookmarkBar({
   );
   const preview = useMemo(() => truncate(normalizeWhitespace(bm.content), 160), [bm.content]);
 
+  // 注意两点：
+  // 1. 外层容器是 pointer-events-none，滚动容器在「装得下」时也是 pointer-events-none
+  //   （这样滚轮能透传给聊天区），所以书签自身必须显式 pointer-events-auto，
+  //   否则 hover / 点击都会静默失效。
+  // 2. 高度固定 6px：hover 只拉宽 + 发光（见 index.css 的 .bookmark-bar:hover）。
+  //   高度一变整栏 justify-center 就会重新居中，预览浮层立刻与书签错位。
   return (
     <div
       ref={setRef}
-      className="flex w-full shrink-0 items-center transition-all duration-200 ease-out"
-      style={{ height: hovered ? `${BAR_H}px` : `${BAR_H - 22}px` }}
+      className="bookmark-bar pointer-events-auto flex h-1.5 w-full shrink-0 items-center"
+      onMouseEnter={(event) => onHover(bm.timestamp, event.currentTarget)}
+      onMouseLeave={() => onHover(bm.timestamp, null)}
     >
       <button
         type="button"
         aria-label={preview}
         aria-current={visible ? 'location' : undefined}
         onClick={() => onJump(bm.timestamp)}
-        onMouseEnter={(event) => {
-          setHovered(true);
-          onHover(bm.timestamp, event.currentTarget.parentElement);
-        }}
-        onMouseLeave={() => {
-          setHovered(false);
-          onHover(bm.timestamp, null);
-        }}
-        className="flex items-center transition-all duration-200 ease-out"
-        style={{ height: hovered ? `${BAR_H}px` : `${BAR_H - 22}px` }}
+        className="flex items-center"
       >
-        {/* 当前可见对话轮次用黄色，其他书签保持蓝色；悬停时延续各自颜色。 */}
+        {/* 当前可见对话轮次用黄色，其他书签保持蓝色；当前色也用作发光色（currentColor）。 */}
         <span
-          className="block rounded-r-sm transition-all duration-200 ease-out"
-          style={{
-            width: hovered ? 14 : 12,
-            height: hovered ? BAR_H : BAR_H - 22,
-            background: `rgb(${color})`,
-            opacity: hovered || visible ? 1 : 0.7,
-            boxShadow: hovered ? `0 0 6px rgb(${color} / 0.6)` : 'none'
-          }}
+          className={`bookmark-chip block h-1.5 rounded-r-sm ${visible ? 'opacity-100' : 'opacity-70'}`}
+          style={{ background: `rgb(${color})`, color: `rgb(${color})` }}
         />
       </button>
     </div>

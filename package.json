@@ -28,8 +28,8 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"electron/**/*.ts\" \"preload.ts\""
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "^1.1.0",
-    "@earendil-works/pi-coding-agent": "^1.0.1",
+    "@earendil-works/pi-ai": "^1.4.0",
+    "@earendil-works/pi-coding-agent": "^1.4.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "monaco-editor": "^0.52.0",
     "monaco-themes": "^0.4.8",

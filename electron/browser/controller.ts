@@ -238,6 +238,22 @@ export class BrowserController {
     await Promise.all([ses.clearStorageData(), ses.clearCache()]);
   }
 
+  /**
+   * 截当前激活标签的画面（data URL）。
+   * 用途：App 浮层压住原生视图时，先把视图收起来，但保留一张静态底图，
+   * 面板不会变成一片空白（原生视图不能与 HTML 叠层，只能“拍下来再藏”）。
+   */
+  async captureActiveTab(): Promise<string | null> {
+    const tab = this.getActiveTab();
+    if (!tab) return null;
+    try {
+      const image = await tab.view.webContents.capturePage();
+      return image.isEmpty() ? null : image.toDataURL();
+    } catch {
+      return null;
+    }
+  }
+
   async snapshot(tabId?: string): Promise<BrowserSnapshot> {
     const tab = this.resolveTab(tabId);
     const result = (await tab.view.webContents.executeJavaScript(`(() => {

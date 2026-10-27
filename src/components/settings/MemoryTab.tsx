@@ -3,15 +3,17 @@ import Icon from '../common/Icon';
 import Switch from '../common/Switch';
 import Dropdown from '../common/Dropdown';
 import { t } from '../../i18n/zh';
-import { usePiStore } from '../../store/pi-store';
-import MemoryReviewSection from '../chat/MemoryReviewSection';
-import type { MemoryConfig, MemoryFileStat, MemoryFileId, MemoryStatus } from '../../types/pi';
+import { MemoryEditModal, MemoryFileRow } from '../memory/MemoryFileCard';
+import type { MemoryConfig, MemoryFileStat, MemoryFileId } from '../../types/pi';
 
 /**
  * 设置页 - 记忆系统 tab：
- * - 总开关 + 提取/合并模型选择 + 合并阈值
- * - 四个记忆文件 + 当前项目记忆的查看/编辑（点击「编辑」打开弹窗）
+ * - 总开关 + 写入策略 + 提取/合并模型选择 + 合并阈值
+ * - 全局记忆文件（USER.md / MEMORY.md / LESSONS.md / STANDING.md）查看与编辑
  * - 记忆目录展示与打开
+ *
+ * 项目记忆（含候选审核、检索来源、变更历史）不在设置页展示——它是项目属性，
+ * 入口在侧栏项目的「项目属性」弹窗 → 记忆页（`src/components/session/ProjectMemoryTab.tsx`）。
  */
 const FILE_IDS = ['USER.md', 'MEMORY.md', 'LESSONS.md', 'STANDING.md'] as const;
 type FixedFileId = (typeof FILE_IDS)[number];
@@ -27,15 +29,8 @@ export default function MemoryTab() {
   const [config, setConfig] = useState<MemoryConfig | null>(null);
   const [stats, setStats] = useState<MemoryFileStat[]>([]);
   const [models, setModels] = useState<any[]>([]);
-  const [projectName, setProjectName] = useState('');
-  const [projectId, setProjectId] = useState('');
-  const [memoryStatus, setMemoryStatus] = useState<MemoryStatus | null>(null);
-  /** 弹窗编辑中：{ fileId, projName?, label } */
-  const [editing, setEditing] = useState<{
-    fileId: MemoryFileId;
-    projName?: string;
-    label: string;
-  } | null>(null);
+  /** 弹窗编辑中：{ fileId, label } */
+  const [editing, setEditing] = useState<{ fileId: MemoryFileId; label: string } | null>(null);
 
   useEffect(() => {
     loadAll();
@@ -43,16 +38,10 @@ export default function MemoryTab() {
 
   const loadAll = async () => {
     try {
-      const [cfg, status] = await Promise.all([
-        window.pi.memory.getConfig(),
-        window.pi.memory.getStatus()
-      ]);
+      const cfg = await window.pi.memory.getConfig();
       setConfig(cfg);
-      setStats(status.files || []);
-      setProjectName(status.projectName || '');
-      setProjectId(status.projectId);
-      setMemoryStatus(status);
     } catch {}
+    await refreshStats();
     try {
       const ms = await window.pi.getAvailableModels();
       setModels(Array.isArray(ms) ? ms : []);
@@ -89,7 +78,6 @@ export default function MemoryTab() {
     try {
       const status = await window.pi.memory.getStatus();
       setStats(status.files || []);
-      setMemoryStatus(status);
     } catch {}
   };
 
@@ -194,15 +182,7 @@ export default function MemoryTab() {
         </div>
       </div>
 
-      {memoryStatus && (
-        <MemoryReviewSection
-          key={memoryStatus.projectId}
-          status={memoryStatus}
-          onChanged={refreshStats}
-        />
-      )}
-
-      {/* 记忆文件 */}
+      {/* 记忆文件（仅全局） */}
       <div className="mb-4">
         <h3 className="mb-2 text-xs font-semibold text-od-text">{t.memory.filesSection}</h3>
         <div className="space-y-1.5">
@@ -215,21 +195,10 @@ export default function MemoryTab() {
               onEdit={() => setEditing({ fileId: id, label: FILE_LABELS[id] })}
             />
           ))}
-          {projectName && (
-            <MemoryFileRow
-              fileId="project"
-              projectName={projectId}
-              label={t.memory.fileProject(projectName)}
-              stat={stats.find((s) => s.id === `project:${projectId}/MEMORY.md`)}
-              onEdit={() =>
-                setEditing({
-                  fileId: 'project',
-                  projName: projectId,
-                  label: t.memory.fileProject(projectName)
-                })
-              }
-            />
-          )}
+        </div>
+        <div className="mt-2 flex items-start gap-1.5 rounded border border-od-border-light px-3 py-2 text-xs text-od-text-dim">
+          <Icon name="info" className="mt-0.5 w-3 shrink-0" />
+          <span>{t.memory.projectMemoryMovedHint}</span>
         </div>
       </div>
 
@@ -237,191 +206,11 @@ export default function MemoryTab() {
       {editing && (
         <MemoryEditModal
           fileId={editing.fileId}
-          projectName={editing.projName}
           title={editing.label}
           onClose={() => setEditing(null)}
           onSaved={refreshStats}
         />
       )}
-    </div>
-  );
-}
-
-function MemoryFileRow({
-  fileId,
-  projectName,
-  label,
-  stat,
-  onEdit
-}: {
-  fileId: MemoryFileId;
-  projectName?: string;
-  label: string;
-  stat?: MemoryFileStat;
-  onEdit: () => void;
-}) {
-  const handleOpen = async () => {
-    try {
-      const p = await window.pi.memory.getFilePath(fileId, projectName);
-      await window.pi.openWith(p, 'default');
-    } catch {}
-  };
-  return (
-    <div className="flex items-center justify-between rounded border border-od-border bg-od-bg-alt px-3 py-2">
-      <div className="min-w-0">
-        <div className="truncate text-sm text-od-text-bright">{label}</div>
-        <div className="text-xs text-od-text-dim">
-          {stat?.exists ? t.memory.entriesCount(stat.entries) : '—'} ·{' '}
-          {stat ? `${Math.ceil(stat.size / 1024)}KB` : '0KB'}
-        </div>
-      </div>
-      <div className="flex shrink-0 items-center gap-1.5">
-        <button
-          onClick={handleOpen}
-          disabled={!stat?.exists}
-          className="flex items-center gap-1 rounded border border-od-border-light px-2 py-1 text-xs text-od-text transition-colors hover:bg-od-bg-hover disabled:opacity-40"
-          title={t.memory.openFileDesc}
-        >
-          <Icon name="file" className="w-3" />
-          {t.memory.openFile}
-        </button>
-        <button
-          onClick={onEdit}
-          className="shrink-0 rounded border border-od-border-light px-2 py-1 text-xs text-od-text transition-colors hover:bg-od-bg-hover"
-        >
-          {t.edit}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/** 记忆文件编辑弹窗：textarea + 保存/取消，Esc 关闭 */
-function MemoryEditModal({
-  fileId,
-  projectName,
-  title,
-  onClose,
-  onSaved
-}: {
-  fileId: MemoryFileId;
-  projectName?: string;
-  title: string;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [content, setContent] = useState('');
-  const [revision, setRevision] = useState('');
-  const [loaded, setLoaded] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const showToast = usePiStore((state) => state.showToast);
-  const isMac = window.pi?.platform === 'darwin';
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const c = await window.pi.memory.readFile(fileId, projectName);
-        if (alive) {
-          setContent(c.content);
-          setRevision(c.revision);
-          setLoaded(true);
-        }
-      } catch {
-        if (alive) {
-          showToast(t.memory.readFileFailed, { variant: 'error' });
-        }
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-    // showToast 是 store 上的稳定 action，加入依赖不会引起重跑
-  }, [fileId, projectName, showToast]);
-
-  useEffect(() => {
-    const onEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', onEsc);
-    return () => document.removeEventListener('keydown', onEsc);
-  }, [onClose]);
-
-  const handleSave = async () => {
-    if (saving) return;
-    setSaving(true);
-    try {
-      const saved = await window.pi.memory.writeFile(fileId, content, projectName, revision);
-      setContent(saved.content);
-      setRevision(saved.revision);
-      showToast(t.memory.savedFile, { variant: 'success' });
-      onSaved();
-    } catch (e: any) {
-      showToast(t.memory.saveFileFailed(String(e?.message || e)), { variant: 'error' });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-[100] flex flex-col bg-black/50"
-      style={{ paddingTop: isMac ? 38 : 32 }}
-      onClick={onClose}
-    >
-      <div
-        className="flex min-h-0 flex-1 flex-col mx-auto my-6 w-[min(640px,90vw)] rounded-lg border border-od-border bg-od-bg-alt shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* 标题栏 */}
-        <div className="flex shrink-0 items-center justify-between border-b border-od-border px-4 py-2.5">
-          <div className="flex items-center gap-1.5 text-sm font-semibold text-od-text-bright">
-            <Icon name="memory" className="w-3.5 text-od-accent" />
-            {title}
-          </div>
-          <button
-            onClick={onClose}
-            className="rounded p-0.5 text-od-text-dim transition-colors hover:bg-od-bg-hover hover:text-od-text-bright"
-          >
-            <Icon name="close" size="xs" />
-          </button>
-        </div>
-        {/* 编辑区 */}
-        <div className="flex min-h-0 flex-1 flex-col px-4 py-3">
-          {!loaded ? (
-            <div className="flex flex-1 items-center justify-center text-xs text-od-text-dim">
-              <Icon name="spinner" spin className="mr-1.5 w-3" />
-              {t.loading}
-            </div>
-          ) : (
-            <textarea
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              spellCheck={false}
-              className="min-h-0 flex-1 resize-none rounded border border-od-border-light bg-od-bg px-2.5 py-2 font-mono text-xs leading-relaxed text-od-text-bright outline-none focus:border-od-accent"
-            />
-          )}
-        </div>
-        {/* 底栏 */}
-        <div className="flex shrink-0 items-center justify-between border-t border-od-border px-4 py-2.5">
-          <div className="min-w-0 truncate text-xs text-od-text-dim">{t.memory.editorHint}</div>
-          <div className="flex shrink-0 items-center gap-2">
-            <button
-              onClick={onClose}
-              className="rounded border border-od-border-light px-3 py-1.5 text-xs text-od-text transition-colors hover:bg-od-bg-hover"
-            >
-              {t.cancel}
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={!loaded || saving}
-              className="rounded bg-od-accent px-3 py-1.5 text-xs text-white transition-colors hover:bg-od-accent/80 active:bg-od-accent/65 disabled:opacity-50"
-            >
-              {saving ? t.memory.savingFile : t.memory.saveFile}
-            </button>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

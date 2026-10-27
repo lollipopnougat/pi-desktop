@@ -12,7 +12,7 @@
 
 - 流式输出、Markdown 渲染（highlight.js 语法高亮）、思考块折叠、工具调用卡片（展开查看参数与结果，一键在面板打开文件 / diff）
 - 连续工具活动自动折叠成组；消息操作栏（复制 / 从此处分叉 / 时间戳）
-- 输入框：自动增高、图片粘贴 / 拖拽 / 上传、文本文件追加、`@文件` `$技能` `/命令` 提及补全、模式切换（标准 / Plan / Goal）、权限策略与模型选择、上下文占用圆环
+- 输入框：自动增高、图片粘贴 / 拖拽 / 上传、文本文件追加、`@文件`（目录可逐层下钻补全）`$技能` `/命令` 提及补全、模式切换（标准 / Plan / Goal）、权限策略与模型选择、上下文占用圆环
 - 待发送队列：steer / followUp 分区，拖拽排序、跨区切换、撤回回输入框
 - 用户消息书签栏：按比例定位、悬停预览、点击跳转
 - **本次改动预览**：每轮回复末尾列出 agent 这轮改过的文件（`+/-` 统计，写文件带「写入」标注），点文件名在右侧打开该文件 diff，点「审核」打开审核面板（左侧文件列表 + 右侧整份前后内容 diff）
@@ -23,7 +23,7 @@
 - 按项目分组的会话列表：搜索、排序、重命名、复制、删除、导出，右键菜单操作
 - 全屏会话树：覆盖所有 entry 类型（消息 / 工具 / 分支摘要 / 压缩 / 模型切换 / 计划 / 目标 / 子 agent / 自定义），支持选中导航、分叉、摘要
 - 分叉（按 entry 或按时间点）、跨项目会话全文搜索
-- 会话属性弹窗（系统提示词 / 工具 / 技能 / MCP）与项目属性弹窗（项目级技能 / MCP）
+- 会话属性弹窗（系统提示词（只读 Monaco）/ 工具 / 技能 / MCP）与项目属性弹窗（项目级技能 / MCP / 记忆）
 - 导出 JSONL 与 HTML（HTML 由 SDK 模板渲染成可分享的单文件报告）
 
 ### 模型与供应商
@@ -88,6 +88,7 @@
 
 - 跨会话长期记忆：`USER.md` / `MEMORY.md` / `LESSONS.md` / `STANDING.md` + 项目记忆
 - 自动 / 审核 / 显式三种写入策略，提取与合并流水线，候选审核、历史回滚与旧数据迁移
+- 查看入口：聊天头部「记忆」面板会展示本会话注入明细与候选；全局记忆文件在设置页「记忆系统」，项目记忆（含候选审核、检索来源、变更历史）在侧栏项目的「项目属性」弹窗 → 记忆页
 
 ### 权限与安全
 
@@ -126,20 +127,20 @@
 
 ## 技术栈
 
-| 层 | 技术 |
-|---|---|
-| 运行时 | Electron 44.5（macOS 使用 `hiddenInset` 标题栏 + vibrancy，Windows 使用 acrylic 材质） |
-| 界面 | React 18.3 + TypeScript 5.9 |
-| 构建 | Vite 6.4 + vite-plugin-electron |
-| 状态 | Zustand 4.5（单一 store） |
-| 样式 | Tailwind CSS 3.4 + @tailwindcss/typography（`od-*` CSS 变量色板） |
-| 编辑器 | Monaco Editor 0.52 |
-| 终端 | @xterm/xterm 6 + node-pty 1.1 |
-| Markdown | marked 18 + DOMPurify + highlight.js 11 |
-| Agent SDK | @earendil-works/pi-coding-agent 1.0.1（+ pi-ai 1.1.0） |
-| MCP | @modelcontextprotocol/sdk 1.30 |
-| 测试 | Vitest 4（77 个测试文件） |
-| 打包 | electron-builder 26 |
+| 层        | 技术                                                                                   |
+| --------- | -------------------------------------------------------------------------------------- |
+| 运行时    | Electron 44.5（macOS 使用 `hiddenInset` 标题栏 + vibrancy，Windows 使用 acrylic 材质） |
+| 界面      | React 18.3 + TypeScript 5.9                                                            |
+| 构建      | Vite 6.4 + vite-plugin-electron                                                        |
+| 状态      | Zustand 4.5（单一 store）                                                              |
+| 样式      | Tailwind CSS 3.4 + @tailwindcss/typography（`od-*` CSS 变量色板）                      |
+| 编辑器    | Monaco Editor 0.52                                                                     |
+| 终端      | @xterm/xterm 6 + node-pty 1.1                                                          |
+| Markdown  | marked 18 + DOMPurify + highlight.js 11                                                |
+| Agent SDK | @earendil-works/pi-coding-agent 1.4.0（+ pi-ai 1.4.0）                                 |
+| MCP       | @modelcontextprotocol/sdk 1.30                                                         |
+| 测试      | Vitest 4（77 个测试文件）                                                              |
+| 打包      | electron-builder 26                                                                    |
 
 ## 快速开始
 
@@ -170,17 +171,17 @@ npm run electron:build:win:dir  # Windows x64 免安装目录
 
 ## 常用脚本
 
-| 脚本 | 说明 |
-|---|---|
-| `npm run dev` | 开发模式（Vite + Electron，自动打开窗口与 DevTools） |
-| `npm run build` | `tsc -b` 类型检查 + Vite 生产构建 |
-| `npm run electron:build` | 生成图标 + 构建 + electron-builder 打包当前平台 |
-| `npm run electron:build:win` / `:win:dir` | Windows x64 便携版 / 免安装目录 |
-| `npm run icons` | 由 SVG 生成 `icon.png` / `.ico` / `.icns` |
-| `npm run lint` / `lint:fix` | ESLint 检查 / 自动修复（应保持 0 error） |
-| `npm run format` / `format:check` | Prettier 格式化 / 检查 |
-| `npm test` / `test:watch` / `test:coverage` | Vitest 单次 / watch / 覆盖率 |
-| `npx tsc -b` | 单独跑类型检查（无输出即通过） |
+| 脚本                                        | 说明                                                 |
+| ------------------------------------------- | ---------------------------------------------------- |
+| `npm run dev`                               | 开发模式（Vite + Electron，自动打开窗口与 DevTools） |
+| `npm run build`                             | `tsc -b` 类型检查 + Vite 生产构建                    |
+| `npm run electron:build`                    | 生成图标 + 构建 + electron-builder 打包当前平台      |
+| `npm run electron:build:win` / `:win:dir`   | Windows x64 便携版 / 免安装目录                      |
+| `npm run icons`                             | 由 SVG 生成 `icon.png` / `.ico` / `.icns`            |
+| `npm run lint` / `lint:fix`                 | ESLint 检查 / 自动修复（应保持 0 error）             |
+| `npm run format` / `format:check`           | Prettier 格式化 / 检查                               |
+| `npm test` / `test:watch` / `test:coverage` | Vitest 单次 / watch / 覆盖率                         |
+| `npx tsc -b`                                | 单独跑类型检查（无输出即通过）                       |
 
 ## 目录结构
 
@@ -251,21 +252,21 @@ Electron 主进程 (electron/)
 
 所有配置与数据都在 `~/.pi-desktop/`（与 pi CLI 完全隔离）：
 
-| 文件 / 目录 | 用途 |
-|---|---|
-| `ui-config.json` | UI 偏好（字号、面板宽度、主题、Monaco、终端、通知、浏览器开关等） |
-| `settings.json` | SDK 配置（上下文压缩等） |
-| `models.json` / `auth.json` | 自定义供应商配置 / 内置供应商凭证 |
-| `classifiers.json` | 决策模型端点配置 |
-| `mcp.json` / `mcp-cache.json` | MCP 服务器配置与缓存 |
-| `hooks.json` | 生命周期钩子 |
-| `git-ai.json` | git-ai 改动溯源（启用 / 路径 / 上报范围） |
-| `memory/` | 长期记忆 Markdown 与项目记忆 |
-| `logs/` | 分通道 JSONL 日志 |
-| `sessions/` | 会话持久化（JSONL） |
-| `skills/` `prompts/` `themes/` `agents/` | 用户级技能、Prompt 模板、主题、子 agent 定义 |
-| `models-store.json` / `trust.json` | SDK 模型清单缓存 / 项目信任状态 |
-| `AGENTS.md` | 全局自定义指令 |
+| 文件 / 目录                              | 用途                                                              |
+| ---------------------------------------- | ----------------------------------------------------------------- |
+| `ui-config.json`                         | UI 偏好（字号、面板宽度、主题、Monaco、终端、通知、浏览器开关等） |
+| `settings.json`                          | SDK 配置（上下文压缩等）                                          |
+| `models.json` / `auth.json`              | 自定义供应商配置 / 内置供应商凭证                                 |
+| `classifiers.json`                       | 决策模型端点配置                                                  |
+| `mcp.json` / `mcp-cache.json`            | MCP 服务器配置与缓存                                              |
+| `hooks.json`                             | 生命周期钩子                                                      |
+| `git-ai.json`                            | git-ai 改动溯源（启用 / 路径 / 上报范围）                         |
+| `memory/`                                | 长期记忆 Markdown 与项目记忆                                      |
+| `logs/`                                  | 分通道 JSONL 日志                                                 |
+| `sessions/`                              | 会话持久化（JSONL）                                               |
+| `skills/` `prompts/` `themes/` `agents/` | 用户级技能、Prompt 模板、主题、子 agent 定义                      |
+| `models-store.json` / `trust.json`       | SDK 模型清单缓存 / 项目信任状态                                   |
+| `AGENTS.md`                              | 全局自定义指令                                                    |
 
 项目级配置放在项目内：`<cwd>/.mcp.json`、`<cwd>/.pi-desktop/{skills,agents}`。
 
@@ -273,12 +274,12 @@ Electron 主进程 (electron/)
 
 源码在 `resources/`，打包时经 `extraResources` 复制到 `process.resourcesPath/`：
 
-| 资源 | 内容 |
-|---|---|
-| `skills/` | 内置技能（`skill-creator`，含技能格式参考与校验脚本） |
-| `agents/` | 内置子 agent 定义（generalist / reviewer / scout / worker） |
-| `terminal-themes/` | 20 套终端配色 |
-| `docs/` | `pi-desktop-system-prompt.md`（注入系统提示词）、`pi-desktop.md`（给模型的完整说明） |
+| 资源               | 内容                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------------ |
+| `skills/`          | 内置技能（`skill-creator`，含技能格式参考与校验脚本）                                |
+| `agents/`          | 内置子 agent 定义（generalist / reviewer / scout / worker）                          |
+| `terminal-themes/` | 20 套终端配色                                                                        |
+| `docs/`            | `pi-desktop-system-prompt.md`（注入系统提示词）、`pi-desktop.md`（给模型的完整说明） |
 
 ## 开发
 

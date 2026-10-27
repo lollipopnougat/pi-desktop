@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Icon from '../common/Icon';
 import SkillsTab from '../settings/SkillsTab';
 import McpTab from '../settings/McpTab';
+import ProjectMemoryTab from './ProjectMemoryTab';
 import { t } from '../../i18n/zh';
 
 interface ProjectInfoModalProps {
@@ -10,12 +11,13 @@ interface ProjectInfoModalProps {
   onClose: () => void;
 }
 
-type TabKey = 'skills' | 'mcp';
+type TabKey = 'skills' | 'mcp' | 'memory';
 
 /**
- * 项目属性弹窗：展示项目真实路径，管理项目级 Skill、MCP 服务器。
+ * 项目属性弹窗：展示项目真实路径，管理项目级 Skill、MCP 服务器与项目记忆。
  * - Skill tab：项目级技能（<cwd>/.pi-desktop/skills、<cwd>/.agents/skills）
  * - MCP tab：项目级 MCP 配置（<cwd>/.mcp.json）
+ * - 记忆 tab：项目记忆文件、待审核候选、检索来源与变更历史
  */
 export default function ProjectInfoModal({ cwd, onClose }: ProjectInfoModalProps) {
   const isMac = window.pi?.platform === 'darwin';
@@ -36,9 +38,10 @@ export default function ProjectInfoModal({ cwd, onClose }: ProjectInfoModalProps
     };
   }, [cwd]);
 
-  const tabs: { key: TabKey; label: string; icon: 'cube' | 'settings' }[] = [
+  const tabs: { key: TabKey; label: string; icon: 'cube' | 'settings' | 'memory' }[] = [
     { key: 'skills', label: t.tabSkills, icon: 'cube' },
-    { key: 'mcp', label: t.tabMcp, icon: 'settings' }
+    { key: 'mcp', label: t.tabMcp, icon: 'settings' },
+    { key: 'memory', label: t.memory.projectPanelTab, icon: 'memory' }
   ];
 
   return (
@@ -97,6 +100,7 @@ export default function ProjectInfoModal({ cwd, onClose }: ProjectInfoModalProps
             <SkillsTab projectMode projectCwd={cwd} onCloseModal={onClose} />
           )}
           {activeTab === 'mcp' && <McpTab projectMode projectCwd={cwd} />}
+          {activeTab === 'memory' && <ProjectMemoryTab cwd={cwd} />}
         </div>
       </div>
     </div>

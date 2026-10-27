@@ -347,6 +347,7 @@ const piAPI = {
     setViewport: (viewport: { x: number; y: number; width: number; height: number }) =>
       ipcRenderer.invoke('pi:browser:setViewport', viewport),
     setVisible: (visible: boolean) => ipcRenderer.invoke('pi:browser:setVisible', visible),
+    capture: () => ipcRenderer.invoke('pi:browser:capture'),
     clearData: () => ipcRenderer.invoke('pi:browser:clearData')
   },
   onBrowserStateChanged: (cb: (state: any) => void) => {

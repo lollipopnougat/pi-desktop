@@ -184,6 +184,7 @@ export const t = {
   sessionInfoPrompts: 'Prompt 模板',
   sessionInfoCommands: '扩展命令',
   copyPrompt: '复制系统提示词',
+  mentionNoItems: '没有匹配项',
   reload: '重新加载',
 
   // 聊天
@@ -1395,6 +1396,12 @@ export const t = {
     fileLessons: '教训（检索）',
     fileStanding: '常驻偏好（按预算注入，仅用户可编辑）',
     fileProject: (name: string) => `项目记忆：${name}（检索）`,
+    projectMemoryMovedHint:
+      '项目记忆、候选审核与变更历史在侧栏项目的「项目属性」弹窗 → 记忆页中查看。',
+    projectTabTitle: '项目记忆',
+    projectPanelTab: '记忆',
+    projectMemoryHint: '项目记忆只按检索注入主题概览，完整内容随 memory_read 读取',
+    projectOtherHint: '这里只显示当前会话所属项目的记忆。请切换到该项目的会话后再查看。',
     entriesCount: (n: number) => `${n} 条`,
     saveFile: '保存',
     savingFile: '保存中...',
@@ -1414,6 +1421,11 @@ export const t = {
     statusNotInjected: '本会话无注入（无记忆或未启用）',
     // 本会话注入明细（MemoryPanel）
     injectionTitle: '本次注入内容',
+    // 注入分段的展示名（注入模板里的标签名不适合直接给用户看）
+    sectionStanding: '常驻偏好',
+    sectionProfile: '用户画像',
+    sectionTopics: '主题索引',
+    sectionPolicy: '检索规则',
     injectedLabel: '注入',
     injectionChars: (n: number) => `${n} 字符`,
     injectionInactive: '未注入：记忆系统未启用或快照尚未加载',

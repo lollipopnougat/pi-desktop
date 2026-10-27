@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import Icon from '../common/Icon';
+import Disclosure from '../common/Disclosure';
 import MemoryReviewSection from './MemoryReviewSection';
+import { injectionSectionTitle, stripInjectionWrapper } from '../../lib/memory-injection-view';
 import { usePiStore } from '../../store/pi-store';
 import { t } from '../../i18n/zh';
 import type {
@@ -300,43 +302,43 @@ function shortSessionName(name: string): string {
 }
 
 /**
- * 单段注入内容行：标签 + 来源 + 字符数，点击展开原文。
- * 记忆内容（STANDING.md / USER.md）默认展开，固定文案（memory-policy）默认折叠。
+ * 单段注入内容行：展示名 + 来源 + 字符数，点击展开正文（默认展开记忆内容，固定文案折叠）。
+ * 注入串里的包裹标签（`<user-profile>` 等）只对模型有意义，这里展示去标签后的正文。
  */
 function InjectionSectionRow({ section }: { section: MemoryInjectionSection }) {
-  const [open, setOpen] = useState(section.id !== 'policy');
+  const body = stripInjectionWrapper(section.content);
   return (
     <div className="space-y-0.5">
-      <button
-        type="button"
+      <Disclosure
+        title={injectionSectionTitle(
+          section.id,
+          {
+            standing: t.memory.sectionStanding,
+            profile: t.memory.sectionProfile,
+            topics: t.memory.sectionTopics,
+            policy: t.memory.sectionPolicy
+          },
+          section.label
+        )}
+        extra={
+          <span className="flex min-w-0 items-center gap-1">
+            <span className="truncate">{section.source}</span>
+            <span className="shrink-0">· {t.memory.injectionChars(section.chars)}</span>
+          </span>
+        }
         disabled={!section.included}
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-1 rounded px-1 py-0.5 text-left transition-colors hover:bg-od-bg-hover disabled:cursor-default disabled:hover:bg-transparent"
+        defaultOpen={section.id !== 'policy'}
       >
-        <Icon
-          name={section.included && open ? 'chevronDown' : 'chevronRight'}
-          className={`w-2.5 shrink-0 text-od-text-dim ${section.included ? '' : 'opacity-40'}`}
-        />
-        <span className="truncate text-od-text-bright">{section.label}</span>
-        <span className="ml-auto shrink-0 text-od-text-dim">
-          {section.source} · {t.memory.injectionChars(section.chars)}
-        </span>
-      </button>
-
+        <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-od-bg-dark px-1.5 py-1 font-mono text-xs leading-relaxed text-od-text">
+          {body || t.memory.injectionEmpty}
+        </pre>
+        {section.truncated && (
+          <div className="px-1 text-od-orange">
+            {t.memory.injectionTruncated(section.originalChars ?? 0)}
+          </div>
+        )}
+      </Disclosure>
       {!section.included && <div className="pl-4 text-od-text-dim">{t.memory.injectionEmpty}</div>}
-
-      {section.included && open && (
-        <>
-          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-od-bg-dark px-1.5 py-1 font-mono text-xs leading-relaxed text-od-text">
-            {section.content}
-          </pre>
-          {section.truncated && (
-            <div className="px-1 text-od-orange">
-              {t.memory.injectionTruncated(section.originalChars ?? 0)}
-            </div>
-          )}
-        </>
-      )}
     </div>
   );
 }

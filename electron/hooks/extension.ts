@@ -36,6 +36,8 @@ function assistantText(msg: unknown): string {
 function messageText(msg: unknown): string {
   if (!msg || typeof msg !== 'object') return '';
   const m = msg as { content?: unknown };
+  // custom message 的 content 可能是字符串（不是内容数组）
+  if (typeof m.content === 'string') return m.content;
   if (!Array.isArray(m.content)) return '';
   return m.content
     .map((c) =>
@@ -158,13 +160,18 @@ export function hookExtensionFactory(): InlineExtension {
       });
 
       // ─── 观察：before_agent_start（本轮提示词/system prompt） ───
+      // 注意：SDK 1.2.0 起本事件是 user | custom 联合事件——
+      // 只有 user run 带 prompt，pi.sendMessage({ triggerTurn: true }) 起的 custom run 只有 message。
       pi.on('before_agent_start', async (event, ctx) => {
         await observe(
           'before_agent_start',
           {
             hookEvent: 'before_agent_start',
+            messageType: event.messageType,
             cwd: ctx.cwd,
-            prompt: truncate(event.prompt),
+            prompt: truncate(
+              event.messageType === 'user' ? event.prompt : messageText(event.message)
+            ),
             systemPrompt: truncate(event.systemPrompt)
           },
           ctx.cwd

@@ -7,6 +7,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { usePiStore } from '../store/pi-store';
 import { t } from '../i18n/zh';
+import { buildFileMentionItems, splitMentionPath } from '../lib/mention-paths';
 import type { MentionItem } from '../types/shared';
 
 export type MentionType = 'file' | 'skill' | 'command';
@@ -41,21 +42,19 @@ export function useMention(
   const [mentionStart, setMentionStart] = useState(-1);
   const listRef = useRef<HTMLDivElement>(null);
 
-  // 候选项加载
+  // 候选项加载（file 类型按路径逐层列目录：@ → @src/ → @src/components/ …）
+  const reqSeq = useRef(0);
   useEffect(() => {
     if (!mentionActive || !mentionType) return;
+    const reqId = ++reqSeq.current;
     const loadItems = async () => {
       try {
         if (mentionType === 'file') {
-          const files = await window.pi.listFiles();
-          const q = (mentionQuery || '').toLowerCase();
-          setMentionItems(
-            files
-              .filter((f) => !f.isDirectory)
-              .filter((f) => !q || f.name.toLowerCase().startsWith(q))
-              .slice(0, 20)
-              .map((f) => ({ label: f.name, detail: f.path, value: f.path }))
-          );
+          const { dir, partial } = splitMentionPath(mentionQuery);
+          const entries = await window.pi.listFiles(dir || undefined);
+          // 快速输入 / 连续下钻时只认最后一次请求，避免旧结果盖新结果
+          if (reqId !== reqSeq.current) return;
+          setMentionItems(buildFileMentionItems(entries, partial));
         } else if (mentionType === 'skill' || mentionType === 'command') {
           const builtinCommands = [
             { name: 'mcp', description: t.tabMcp + '：查看 MCP 服务器状态', source: 'builtin' }
@@ -72,29 +71,32 @@ export function useMention(
             if (aExact !== bExact) return aExact - bExact;
             return 0;
           });
-          setMentionItems(
-            sorted.slice(0, 20).map((c: any) => ({
-              label: c.name,
-              detail: c.description,
-              value: c.name
-            }))
-          );
+          const items = sorted.slice(0, 20).map((c: any) => ({
+            label: c.name,
+            detail: c.description,
+            value: c.name
+          }));
+          if (reqId !== reqSeq.current) return;
+          setMentionItems(items);
         }
       } catch {
-        setMentionItems([]);
+        if (reqId === reqSeq.current) setMentionItems([]);
       }
     };
     loadItems();
   }, [mentionActive, mentionType, mentionQuery, commands]);
+
+  // 候选变少时直接用钳制后的下标（不在 effect 里 setState，避免多余重渲染）
+  const activeIndex = mentionItems.length === 0 ? 0 : Math.min(mentionIndex, mentionItems.length - 1);
 
   // 选中项滚动到可见区
   useEffect(() => {
     if (!mentionActive) return;
     const list = listRef.current;
     if (!list) return;
-    const el = list.children[mentionIndex] as HTMLElement | undefined;
+    const el = list.children[activeIndex] as HTMLElement | undefined;
     el?.scrollIntoView({ block: 'nearest' });
-  }, [mentionIndex, mentionActive]);
+  }, [activeIndex, mentionActive]);
 
   const close = useCallback(() => {
     setMentionActive(false);
@@ -130,6 +132,28 @@ export function useMention(
       if (mentionType === 'file') prefix = '@';
       else if (mentionType === 'skill') prefix = '$';
       else if (mentionType === 'command') prefix = '/';
+
+      // 目录：只把 token 补全成 `@dir/`，下拉保持打开继续列该目录的子项（不关闭、不插入空格）
+      if (item.isDirectory) {
+        const token = `${item.value}/`;
+        setText(`${before}${prefix}${token}${after}`);
+        setMentionType('file');
+        setMentionQuery(token);
+        setMentionIndex(0);
+        setMentionActive(true);
+        setMentionStart(mentionStart);
+        setTimeout(() => {
+          const ta = textareaRef.current;
+          if (ta) {
+            const pos = before.length + prefix.length + token.length;
+            ta.focus();
+            ta.setSelectionRange(pos, pos);
+          }
+        }, 0);
+        return;
+      }
+
+      // 文件（或 skill / 命令）：插入并关闭下拉
       const newText = `${before}${prefix}${item.value} ${after}`;
       setText(newText);
       close();
@@ -164,18 +188,19 @@ export function useMention(
       }
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault();
-        insert(mentionItems[mentionIndex]);
+        const item = mentionItems[activeIndex];
+        if (item) insert(item);
         return true;
       }
       return false;
     },
-    [mentionActive, mentionItems.length, mentionIndex, insert, close]
+    [mentionActive, mentionItems, activeIndex, insert, close]
   );
 
   return {
     mentionActive,
     mentionItems,
-    mentionIndex,
+    mentionIndex: activeIndex,
     mentionType,
     listRef,
     detect,

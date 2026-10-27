@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
+import Editor from '@monaco-editor/react';
 import Icon from '../common/Icon';
 import McpIcon from '../common/McpIcon';
+import { useMonacoEditor } from '../../hooks/useMonacoEditor';
 import { t } from '../../i18n/zh';
 
 /** 会话属性弹窗数据（与 pi:getSessionInfo 返回结构一致，见 misc-ipc.ts） */
@@ -48,6 +50,9 @@ interface SessionInfoModalProps {
  */
 type InfoTab = 'prompt' | 'tools' | 'skills' | 'mcp';
 
+/** 底部状态栏（Footer）高度：py-1.5 ×2 + h-5 按钮 + 1px 上边框 */
+const STATUS_BAR_HEIGHT = 33;
+
 export default function SessionInfoModal({ onClose }: SessionInfoModalProps) {
   const isMac = window.pi?.platform === 'darwin';
   const [info, setInfo] = useState<SessionInfoDetail | null>(null);
@@ -56,6 +61,7 @@ export default function SessionInfoModal({ onClose }: SessionInfoModalProps) {
   const [showInactiveTools, setShowInactiveTools] = useState(false);
   const [mcpStatuses, setMcpStatuses] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<InfoTab>('prompt');
+  const { theme: monacoTheme, options: monacoOptions } = useMonacoEditor();
 
   useEffect(() => {
     let cancelled = false;
@@ -116,11 +122,12 @@ export default function SessionInfoModal({ onClose }: SessionInfoModalProps) {
   return (
     <div
       className="fixed inset-0 z-40 flex flex-col items-center bg-black/60"
-      style={{ paddingTop: isMac ? 38 : 32 }}
+      // 上下都让开：上方是标题栏 drag 区，下方是状态栏（贴着底会把它盖住）
+      style={{ paddingTop: isMac ? 38 : 32, paddingBottom: STATUS_BAR_HEIGHT }}
       onClick={onClose}
     >
       <div
-        className="flex min-h-0 w-full max-w-3xl flex-1 flex-col rounded-lg border border-od-border-light bg-od-bg-alt shadow-2xl"
+        className="flex min-h-0 w-4/5 flex-1 flex-col rounded-lg border border-od-border-light bg-od-bg-alt shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -201,12 +208,16 @@ export default function SessionInfoModal({ onClose }: SessionInfoModalProps) {
               ))}
             </div>
 
-            {/* Tab 内容区（独立滚动，不再整体长滚动） */}
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+            {/* Tab 内容区（独立滚动，不再整体长滚动）；提示词 tab 用 Monaco 自撑高度，不靠外层滚动 */}
+            <div
+              className={`min-h-0 flex-1 px-4 py-3 ${
+                activeTab === 'prompt' ? 'overflow-hidden' : 'overflow-y-auto'
+              }`}
+            >
               {/* ── Tab: 系统提示词 ── */}
               {activeTab === 'prompt' && (
-                <div>
-                  <div className="mb-1 flex items-center justify-between">
+                <div className="flex h-full min-h-0 flex-col">
+                  <div className="mb-1 flex shrink-0 items-center justify-between">
                     <h3 className="flex items-center gap-1 font-medium text-od-text-bright">
                       {info.systemPromptSources.length > 0 && (
                         <span className="font-normal text-od-text-dim">
@@ -226,9 +237,30 @@ export default function SessionInfoModal({ onClose }: SessionInfoModalProps) {
                     )}
                   </div>
                   {info.systemPrompt ? (
-                    <pre className="whitespace-pre-wrap break-words rounded border border-od-border bg-od-bg-dark p-2 font-mono text-xs leading-relaxed text-od-text">
-                      {info.systemPrompt}
-                    </pre>
+                    /* 只读 Monaco（markdown 语言）：正文照原文展示（含分段 XML 标签与缩进），
+                       Markdown 语法与 <tools> 这类型的标签由 Monaco 着色，不渲染预览。 */
+                    <div className="min-h-[45vh] flex-1 overflow-hidden rounded border border-od-border">
+                      <Editor
+                        height="100%"
+                        width="100%"
+                        language="markdown"
+                        theme={monacoTheme}
+                        value={info.systemPrompt}
+                        loading={<span className="text-xs text-od-text-dim">{t.loading}</span>}
+                        options={{
+                          ...monacoOptions,
+                          readOnly: true,
+                          ariaLabel: t.sessionInfoSystemPrompt,
+                          scrollBeyondLastLine: false,
+                          folding: false,
+                          // 这是阅读视图，不是代码文件：缩略图对长文本没有意义
+                          minimap: { enabled: false },
+                          fixedOverflowWidgets: true,
+                          scrollbar: { alwaysConsumeMouseWheel: false },
+                          padding: { top: 10, bottom: 10 }
+                        }}
+                      />
+                    </div>
                   ) : (
                     <div className="rounded border border-od-border bg-od-bg-dark p-2 text-od-text-dim">
                       {t.sessionInfoNoSystemPrompt}

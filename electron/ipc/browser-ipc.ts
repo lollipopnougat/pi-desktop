@@ -33,6 +33,7 @@ export function registerBrowserIpc(browser: BrowserController) {
     browser.setVisible(visible);
     return { ok: true };
   });
+  ipcMain.handle('pi:browser:capture', () => browser.captureActiveTab());
   ipcMain.handle('pi:browser:clearData', async () => {
     await browser.clearData();
     return { ok: true };
