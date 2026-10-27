@@ -33,6 +33,8 @@ import { registerSubagentIpc } from './ipc/subagent-ipc';
 import { registerBackgroundTaskIpc } from './ipc/background-task-ipc';
 import { registerHookIpc } from './ipc/hook-ipc';
 import { registerBrowserIpc } from './ipc/browser-ipc';
+import { registerWebSearchIpc } from './ipc/web-search-ipc';
+import { readWebSearchConfig } from './web-search/config';
 import { registerLogsIpc } from './ipc/logs-ipc';
 import { logAgentEvent } from './logs/agent-events';
 import { logAppEvent } from './logs/channel-logs';
@@ -54,6 +56,7 @@ import {
   setReadImgModelConfig,
   getReadImgModelConfig,
   setModelRuntimeAccessor,
+  webSearchTool,
   type ReadImgModelConfig
 } from './tools';
 import { mcpManager } from './mcp/manager';
@@ -68,6 +71,8 @@ import { PermissionController } from './permission/controller';
 import { DEFAULT_PERMISSION_POLICY } from './permission/policy';
 import { SubagentController } from './subagents/controller';
 import { subagentExtensionFactory } from './subagents/extension';
+import { readSubagentConfig } from './subagents/config';
+import { SUBAGENT_TASK_TOOL } from './subagents/tools';
 import { BackgroundTaskController } from './background-tasks/controller';
 import { backgroundTaskExtensionFactory } from './background-tasks/extension';
 import { hookExtensionFactory } from './hooks/extension';
@@ -286,10 +291,7 @@ export class PiBridge {
       .sort((a, b) => a.createdAt - b.createdAt)
       .map((slot) => {
         const sessionId = slot.session?.sessionId;
-        return slot.snapshot(
-          this.isSlotBusy(slot),
-          sessionId && hasPendingAsk(sessionId) ? 1 : 0
-        );
+        return slot.snapshot(this.isSlotBusy(slot), sessionId && hasPendingAsk(sessionId) ? 1 : 0);
       });
   }
 
@@ -452,7 +454,9 @@ export class PiBridge {
   findSessionSlot(sessionFileOrId: string): SessionSlot | null {
     if (!sessionFileOrId) return null;
     return (
-      this.findSlotBySessionFile(sessionFileOrId) ?? this.findSlotBySessionId(sessionFileOrId) ?? null
+      this.findSlotBySessionFile(sessionFileOrId) ??
+      this.findSlotBySessionId(sessionFileOrId) ??
+      null
     );
   }
 
@@ -564,11 +568,7 @@ export class PiBridge {
   }
 
   /** 会话级推送带该槽身份；切换中的过渡状态由完成后的快照重建。 */
-  private sendSessionEventFor(
-    slot: SessionSlot,
-    channel: string,
-    payload: unknown
-  ): boolean {
+  private sendSessionEventFor(slot: SessionSlot, channel: string, payload: unknown): boolean {
     if (
       !slot.session ||
       slot.access.changing ||
@@ -931,7 +931,7 @@ export class PiBridge {
           sessionManager: rtSm,
           // 从文件恢复的槽用调用方给的事件（reason: 'resume'），否则用 SDK 默认（startup）
           sessionStartEvent: sessionStartEvent ?? rtStartEvent,
-          customTools: [updatePlanTool, askTool, mcpProxyTool, readImgTool]
+          customTools: [updatePlanTool, askTool, mcpProxyTool, readImgTool, webSearchTool]
         })),
         services,
         diagnostics: services.diagnostics
@@ -960,6 +960,11 @@ export class PiBridge {
     this.rebind(slot);
     // read_img 工具可见性：按当前模型是否支持视觉注入/移除
     this.syncReadImgTool(slot);
+    // web_search：按设置页开关决定是否注入（关闭后模型看不到这个工具）
+    this.syncWebSearchTool(slot);
+    // 子智能体：按设置页开关决定是否注入 task 工具（关闭后模型无法委派子任务）
+    // 必须在 bindSessionExtensions 之后：task 工具由内联扩展注册，扩展绑定完才能调整可见性
+    this.syncSubagentTools(slot);
     // 权限闸门：链式包装 agent.beforeToolCall（切换 cwd 重建 runtime 后重新安装）
     slot.permissionController?.install(slot.session);
     // 重建/替换会话前若有挂起审批，按拒绝结算（只影响本槽）
@@ -1090,6 +1095,10 @@ export class PiBridge {
     this.rebind(slot);
     // read_img：会话切换后按新会话模型重新同步可见性
     this.syncReadImgTool(slot);
+    // web_search：换会话后按当前配置重新同步（配置可能在别处改过）
+    this.syncWebSearchTool(slot);
+    // 子智能体：换会话后同样重新同步 task 工具的可见性
+    this.syncSubagentTools(slot);
     // 权限闸门：新 session 对象需重新安装（WeakSet 防重复包装）
     slot.permissionController?.install(slot.session);
     slot.permissionController?.clearPending();
@@ -1236,6 +1245,78 @@ export class PiBridge {
     for (const slot of this.slots.values()) this.syncReadImgTool(slot);
   }
 
+  /**
+   * web_search：按 `~/.pi-desktop/web-search.json` 的开关同步工具可见性。
+   * - enabled=false → 从活跃工具移除（模型看不到，系统提示词里也不列）
+   * - enabled=true → 注入
+   * 在 createRuntimeFor 后、会话切换后、设置页保存配置后调用；每次现读配置，改完即生效。
+   */
+  syncWebSearchTool(slot: SessionSlot = this.focusedSlot()): void {
+    try {
+      const session = slot.session;
+      if (!session?.setActiveToolsByName) return;
+      const shouldHave = readWebSearchConfig().enabled;
+      const active: string[] = session.getActiveToolNames();
+      const has = active.includes('web_search');
+      if (shouldHave && !has) {
+        session.setActiveToolsByName([...active, 'web_search']);
+      } else if (!shouldHave && has) {
+        session.setActiveToolsByName(active.filter((n) => n !== 'web_search'));
+      }
+    } catch {
+      // 同步失败不阻塞会话（web_search 仅是能力增强）
+    }
+  }
+
+  /** 设置页保存网络搜索配置后调用：所有槽（含后台槽）立即跟着变，无需重启 */
+  applyWebSearchConfig(): void {
+    for (const slot of this.slots.values()) this.syncWebSearchTool(slot);
+  }
+
+  /**
+   * 子智能体：按 `~/.pi-desktop/subagents.json` 的开关同步 task 工具可见性。
+   * - enabled=false → 从活跃工具移除（模型看不到 task，子智能体能力等于关闭；
+   *   已启动的子任务与历史 run 不受影响，子任务面板照旧可查看）
+   * - enabled=true → 注入
+   * 在 createRuntimeFor 后、会话切换后、设置页保存配置后调用；每次现读配置，改完即生效。
+   */
+  syncSubagentTools(slot: SessionSlot = this.focusedSlot()): void {
+    try {
+      const session = slot.session;
+      if (!session?.setActiveToolsByName) return;
+      const shouldHave = readSubagentConfig().enabled;
+      const active: string[] = session.getActiveToolNames();
+      const has = active.includes(SUBAGENT_TASK_TOOL);
+      if (shouldHave && !has) {
+        session.setActiveToolsByName([...active, SUBAGENT_TASK_TOOL]);
+      } else if (!shouldHave && has) {
+        session.setActiveToolsByName(active.filter((n) => n !== SUBAGENT_TASK_TOOL));
+      }
+    } catch {
+      // 同步失败不阻塞会话（子智能体仅是能力增强）
+    }
+  }
+
+  /** 设置页保存子智能体配置后调用：所有槽（含后台槽）立即跟着变，无需重启 */
+  applySubagentConfig(): void {
+    for (const slot of this.slots.values()) this.syncSubagentTools(slot);
+  }
+
+  /**
+   * 重同步工具可见性（read_img / web_search / task）。
+   *
+   * `session.reload()` 会按 `includeAllExtensionTools: true` 重建工具注册表
+   * （SDK 的 agent-session.js 里 `_refreshToolRegistry` 这条分支会把
+   * 「注即激活」的扩展工具重新加回活跃集），内联扩展注册的 `task` 因此会在
+   * 「重新加载会话」后又冒出来 —— 所以 reload 后必须再收一遍。
+   * read_img / web_search 是 customTools（不走扩展注册），一并重跑只是幂等保安。
+   */
+  resyncToolVisibility(slot: SessionSlot = this.focusedSlot()): void {
+    this.syncReadImgTool(slot);
+    this.syncWebSearchTool(slot);
+    this.syncSubagentTools(slot);
+  }
+
   registerHandlers() {
     if (this.handlersRegistered) return;
     registerSessionIpc(this);
@@ -1257,6 +1338,7 @@ export class PiBridge {
     registerBackgroundTaskIpc(this);
     registerHookIpc(this);
     registerBrowserIpc(this.browserController);
+    registerWebSearchIpc(this);
     registerLogsIpc();
     this.handlersRegistered = true;
   }

@@ -216,6 +216,28 @@ export const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
   },
   {
     tab: 'agent',
+    title: t.webSearchSection,
+    section: t.webSearchSection,
+    keywords: [
+      '搜索',
+      '网络',
+      '联网',
+      'web_search',
+      '搜索引擎',
+      'bing',
+      'brave',
+      'searxng',
+      '免 key'
+    ]
+  },
+  {
+    tab: 'agent',
+    title: t.subagentSection,
+    section: t.subagentSection,
+    keywords: ['子智能体', '子 agent', 'subagent', 'task', '委派', '并行', '子任务']
+  },
+  {
+    tab: 'agent',
     title: t.permissionSettings,
     section: t.permissionSettings,
     keywords: ['权限', '沙箱', '审批', 'auto-safe', 'permission', '允许', '拒绝']

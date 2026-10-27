@@ -130,6 +130,18 @@ interface SubagentSnapshot {
   }>;
 }
 
+/** 子智能体配置（~/.pi-desktop/subagents.json） */
+export interface SubagentConfig {
+  /** 总开关：关闭后不向智能体注入 task 工具 */
+  enabled: boolean;
+}
+
+/** pi:subagent:getConfig 的返回 */
+export interface SubagentConfigPayload {
+  config: SubagentConfig;
+  configPath: string;
+}
+
 // ===================== 会话槽（多会话后台运行） =====================
 
 /** 一个「活着的会话」在主进程侧的状态投影（window.pi.getSessionSlots / onSessionSlots） */
@@ -205,6 +217,53 @@ export interface BackgroundTaskLogResult {
   returnedBytes: number;
   truncated: boolean;
   tail: boolean;
+}
+
+// ===================== 内置网络搜索（免 Key） =====================
+
+/** 可用的搜索源（全部免 Key、免登录） */
+export type WebSearchProviderId = 'parallel-mcp' | 'bing' | 'brave' | 'so360' | 'searxng';
+
+/** 配置里的选择：auto = 按内置顺序自动降级 */
+export type WebSearchProviderSetting = 'auto' | WebSearchProviderId;
+
+/** 网络搜索配置（~/.pi-desktop/web-search.json） */
+export interface WebSearchConfig {
+  /** 总开关：关闭后不向智能体注入 web_search 工具 */
+  enabled: boolean;
+  provider: WebSearchProviderSetting;
+  /** 自建 SearXNG 地址（空串 = 不使用） */
+  searxngBaseUrl: string;
+  maxResults: number;
+  timeoutMs: number;
+  cacheTtlSeconds: number;
+}
+
+/** 单次源尝试记录（设置页展示「为什么降级」） */
+export interface WebSearchAttempt {
+  provider: WebSearchProviderId;
+  ok: boolean;
+  results: number;
+  ms: number;
+  error?: string;
+}
+
+/** 设置页「测试搜索」结果 */
+export interface WebSearchTestResult {
+  ok: boolean;
+  provider?: WebSearchProviderId;
+  cached?: boolean;
+  ms?: number;
+  results?: Array<{ title: string; url: string; snippet: string }>;
+  attempts?: WebSearchAttempt[];
+  error?: string;
+}
+
+/** pi:webSearch:getConfig 的返回 */
+export interface WebSearchConfigPayload {
+  config: WebSearchConfig;
+  configPath: string;
+  providers: Array<{ id: WebSearchProviderId; label: string }>;
 }
 
 // ===================== git-ai 改动溯源 =====================
@@ -1414,6 +1473,16 @@ export interface PiAPI {
     detect(): Promise<GitAiStatus>;
   };
 
+  // === 内置网络搜索（免 Key，默认开启） ===
+  webSearch: {
+    getConfig(): Promise<WebSearchConfigPayload>;
+    setConfig(
+      patch: Partial<WebSearchConfig>
+    ): Promise<{ ok: boolean; config?: WebSearchConfig; error?: string }>;
+    /** 用当前配置真的搜一次（不走缓存），返回结果与每个源的尝试情况 */
+    test(options?: { query?: string }): Promise<WebSearchTestResult>;
+  };
+
   // === Memory ===
   memory: {
     getConfig(): Promise<MemoryConfig>;
@@ -1456,6 +1525,10 @@ export interface PiAPI {
     reload(): Promise<SubagentSnapshot>;
     /** 读取子 agent 会话文件里的完整对话(终态/重启后);无文件返回 null */
     getSession(runId: string): Promise<SubagentConversation | null>;
+    getConfig(): Promise<SubagentConfigPayload>;
+    setConfig(
+      patch: Partial<SubagentConfig>
+    ): Promise<{ ok: boolean; config?: SubagentConfig; error?: string }>;
   };
   onSubagentUpdate(cb: (snapshot: SubagentSnapshot, identity: SessionIdentity) => void): () => void;
 

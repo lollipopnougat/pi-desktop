@@ -13,9 +13,12 @@ import type { SubagentController } from './controller';
 import type { TaskToolDetails } from './types';
 import { buildTaskToolDescription } from './prompts';
 
+/** 父会话里注册的工具名（PiBridge 按设置页开关注入/移除，见 syncSubagentTools） */
+export const SUBAGENT_TASK_TOOL = 'task';
+
 export function createTaskTool(controller: SubagentController) {
   return defineTool({
-    name: 'task',
+    name: SUBAGENT_TASK_TOOL,
     label: '委派子任务',
     description: buildTaskToolDescription(
       controller.ensureDefinitionsLoaded().agents.map((a) => ({

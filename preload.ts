@@ -413,7 +413,9 @@ const piAPI = {
     stop: (runId: string) => ipcRenderer.invoke('pi:subagent:stop', runId),
     steer: (runId: string, text: string) => ipcRenderer.invoke('pi:subagent:steer', runId, text),
     reload: () => ipcRenderer.invoke('pi:subagent:reload'),
-    getSession: (runId: string) => ipcRenderer.invoke('pi:subagent:getSession', runId)
+    getSession: (runId: string) => ipcRenderer.invoke('pi:subagent:getSession', runId),
+    getConfig: () => ipcRenderer.invoke('pi:subagent:getConfig'),
+    setConfig: (patch: any) => ipcRenderer.invoke('pi:subagent:setConfig', patch)
   },
   onSubagentUpdate: (cb: (snapshot: any, identity: SessionIdentity) => void) => {
     const handler = (_e: unknown, snapshot: any, identity: SessionIdentity) =>
@@ -466,6 +468,13 @@ const piAPI = {
     getConfig: () => ipcRenderer.invoke('pi:gitAi:getConfig'),
     setConfig: (patch: any) => ipcRenderer.invoke('pi:gitAi:setConfig', patch),
     detect: () => ipcRenderer.invoke('pi:gitAi:detect')
+  },
+
+  // === 内置网络搜索（免 Key） ===
+  webSearch: {
+    getConfig: () => ipcRenderer.invoke('pi:webSearch:getConfig'),
+    setConfig: (patch: any) => ipcRenderer.invoke('pi:webSearch:setConfig', patch),
+    test: (options?: { query?: string }) => ipcRenderer.invoke('pi:webSearch:test', options)
   },
 
   // === Memory ===

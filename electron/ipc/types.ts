@@ -77,6 +77,11 @@ export interface PiBridgeContext {
    * 推送路径（rebind 的 replay）在切换过程中会被渲染端按「焦点会话」过滤丢掉，拉取才可靠。
    */
   pendingInteractions(): PendingInteractions;
+  /**
+   * 重同步工具可见性（read_img / web_search / task）：`session.reload()` 后必须调用
+   * （reload 会把「注即激活」的扩展工具重新放回活跃集，关闭状态会被复活）。
+   */
+  resyncToolVisibility(slot?: SessionSlot): void;
   /** 切换 plan 模式（限制为只读工具集 / 恢复全部工具） */
   setPlanMode(enabled: boolean): void;
 }

@@ -13,6 +13,7 @@
  *   ├── auth.json         # 内置供应商 API Key（权限 0600）
  *   ├── mcp.json          # MCP 服务器配置
  *   ├── git-ai.json       # git-ai 改动溯源配置（启用/路径/上报范围）
+ *   ├── web-search.json   # 内置网络搜索配置（开关/搜索源/条数/SearXNG 地址）
  *   ├── hooks.json        # 生命周期钩子（PreToolUse/PostToolUse/SessionStart/Stop）
  *   ├── models-store.json # SDK 模型清单缓存
  *   ├── trust.json        # 项目信任状态

@@ -4,6 +4,8 @@ import Switch from '../common/Switch';
 import Radio from '../common/Radio';
 import Dropdown, { DROPDOWN_TRIGGER_CLASS } from '../common/Dropdown';
 import GitAiSection from './GitAiSection';
+import WebSearchSection from './WebSearchSection';
+import SubagentsSection from './SubagentsSection';
 import { t } from '../../i18n/zh';
 import { usePiStore, type PendingSendMode, type PermissionPolicy } from '../../store/pi-store';
 import type { ClassifierModelInfo } from '../../types/pi';
@@ -34,6 +36,12 @@ export default function AgentTab() {
 
       {/* 图片识别工具 section */}
       <ReadImgSection />
+
+      {/* 网络搜索工具 section */}
+      <WebSearchSection />
+
+      {/* 子智能体 section */}
+      <SubagentsSection />
 
       {/* 上下文压缩 section */}
       <CompactionSection />

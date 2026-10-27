@@ -810,6 +810,43 @@ export const t = {
   compactionReserveDefaultHint: '默认 16384',
   compactionKeepRecentDefaultHint: '默认 20000',
 
+  // 网络搜索（智能体配置 tab）
+  webSearchSection: '网络搜索',
+  webSearchSectionDesc: '内置免 Key 搜索工具：自动在多个免费搜索源间降级，开箱即用，无需注册账号',
+  webSearchEnabledLabel: '启用网络搜索工具',
+  webSearchEnabledDesc: '关闭后不再向智能体注入 web_search 工具',
+  webSearchProviderLabel: '搜索引擎',
+  webSearchProviderDesc: '自动 = 按 Parallel → Bing → Brave → 360 → SearXNG 顺序尝试，失败自动降级',
+  webSearchProviderAuto: '自动（推荐）',
+  webSearchCountLabel: '每次结果条数',
+  webSearchCountDesc: '返回给智能体的搜索结果数量',
+  webSearchSearxngLabel: '自建 SearXNG 地址',
+  webSearchSearxngDesc: '可选：填了会参与「自动」降级链，需实例开启 JSON 输出；留空则不使用',
+  webSearchSearxngPlaceholder: 'http://localhost:8080',
+  webSearchTestLabel: '测试搜索',
+  webSearchTestButton: '测试',
+  webSearchTesting: '搜索中…',
+  webSearchTestHint: '用当前配置真实搜一次（不走缓存）',
+  webSearchTestOk: (provider: string, count: number, ms: number) =>
+    `可用：${provider} · ${count} 条 · ${ms}ms`,
+  webSearchTestFailed: (message: string) => `失败：${message}`,
+  webSearchTestEmpty: '未返回结果',
+  webSearchSaved: '网络搜索设置已保存',
+  webSearchSaveFailed: '保存失败',
+  webSearchConfigFileHint: (path: string) => `配置文件：${path}`,
+
+  // 子智能体（智能体配置 tab）
+  subagentSection: '子智能体',
+  subagentSectionDesc:
+    '把自包含子任务委派给独立子 agent（task 工具）：并行探索、独立审查、批量机械工作',
+  subagentEnabledLabel: '启用子智能体',
+  subagentEnabledDesc: '关闭后不再向智能体注入 task 工具，模型无法再委派子任务',
+  subagentDisabledHint:
+    '已关闭：当前会话里模型看不到 task 工具。已启动的子任务会继续跑完，子任务面板的历史记录仍可查看',
+  subagentSaved: '子智能体设置已保存',
+  subagentSaveFailed: '保存失败',
+  subagentConfigFileHint: (path: string) => `配置文件：${path}`,
+
   // git-ai 改动溯源（智能体配置 tab）
   gitAiSection: 'git-ai 改动溯源',
   gitAiSectionDesc:

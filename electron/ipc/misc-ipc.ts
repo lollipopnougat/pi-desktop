@@ -62,11 +62,7 @@ export interface MiscContext extends PiBridgeContext {
  * - 模型支持视觉：原样透传（image 块正常送达模型）
  * - 不支持视觉：文本注入路径提示（配合 read_img 工具使用）
  */
-function normalizePromptImages(
-  session: any,
-  text: string,
-  opts?: any
-): [string, any | undefined] {
+function normalizePromptImages(session: any, text: string, opts?: any): [string, any | undefined] {
   const images = opts?.images;
   if (!Array.isArray(images) || images.length === 0) {
     return [text, opts];
@@ -215,7 +211,7 @@ export function registerMiscIpc(ctx: MiscContext) {
         sessionRevision: slot.identity().sessionRevision,
         sessionFile: s.sessionFile,
         sessionName: s.sessionName,
-        cwd:ctx.cwd
+        cwd: ctx.cwd
       };
     });
   });
@@ -480,8 +476,10 @@ export function registerMiscIpc(ctx: MiscContext) {
   // === Reload session ===
   // 对齐 pi CLI `/reload`：重载扩展/配置/系统提示词，重置 pending 状态
   ipcMain.handle('pi:reloadSession', async () => {
-    const session = ctx.sessionFor().requireSession();
-    await session.reload();
+    const slot = ctx.sessionFor();
+    await slot.requireSession().reload();
+    // reload 会按「注即激活」重建扩展工具（task 会冒回来）：重新收一次可见性
+    ctx.resyncToolVisibility(slot);
   });
 
   // === Context detail（上下文详情面板数据） ===

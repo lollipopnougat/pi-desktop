@@ -26,3 +26,4 @@ export {
   saveImagesToTempFiles,
   type ReadImgModelConfig
 } from './read-img-tool';
+export { webSearchTool, type WebSearchDetails } from './web-search-tool';
