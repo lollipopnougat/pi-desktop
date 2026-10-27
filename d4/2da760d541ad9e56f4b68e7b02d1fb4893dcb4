@@ -1,0 +1,24 @@
+package-lock.json
+  s_a9f523437d79c0::t_6bc502d773dfa3 3,9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d42da760d541ad9e56f4b68e7b02d1fb4893dcb4",
+  "prompts": {},
+  "humans": {
+    "h_cc604c9bda8355": {
+      "author": "lollipopnougat <ab2defg145@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_a9f523437d79c0": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a17e04-d739-7105-96c9-acd66ee1edf7",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "lollipopnougat <ab2defg145@gmail.com>"
+    }
+  }
+}
