@@ -1,0 +1,76 @@
+README.md
+  h_cc604c9bda8355 15,26,91,130-143,174-184,255-269,277-282
+electron/browser/controller.ts
+  h_cc604c9bda8355 241-256
+electron/goal/extension.ts
+  h_cc604c9bda8355 42-46,52
+electron/hooks/extension.ts
+  h_cc604c9bda8355 39-40,163-164,170,172-174
+electron/ipc/browser-ipc.ts
+  h_cc604c9bda8355 36
+package-lock.json
+  h_cc604c9bda8355 13-14,747-749,752,760-762,767,821-823,833-835,838-842,1010-1012,1022-1024,1031-1033,1037-1038,8282,9933-9944,11485
+package.json
+  h_cc604c9bda8355 31-32
+preload.ts
+  h_cc604c9bda8355 350
+src/components/chat/BookmarkRail.tsx
+  h_cc604c9bda8355 8-12,16-17,20-22,36,118-119,125-128,131-135,150,175,177-180,185,215-220,224-226,233,235,237-238
+src/components/chat/MemoryPanel.tsx
+  h_cc604c9bda8355 3,5,305-306,309,312-328,330,332-340
+src/components/chat/MemoryReviewSection.tsx
+  h_cc604c9bda8355 5,78,91-92,139-143,147,151-152,169,171,187,260,269
+src/components/chat/MentionDropdown.tsx
+  h_cc604c9bda8355 5-6,27-28,34-57
+src/components/common/Disclosure.tsx
+  h_cc604c9bda8355 1-61
+src/components/memory/MemoryFileCard.tsx
+  h_cc604c9bda8355 1-189
+src/components/session/ProjectInfoModal.tsx
+  h_cc604c9bda8355 5,14,17,20,41,43-44,103
+src/components/session/ProjectMemoryTab.tsx
+  h_cc604c9bda8355 1-118
+src/components/session/SessionInfoModal.tsx
+  h_cc604c9bda8355 2,5,53-55,64,125-126,130,211-216,219-220,240-263
+src/components/settings/MemoryTab.tsx
+  h_cc604c9bda8355 6-7,11-12,14-16,32-33,41,44,185,198-201
+src/components/workspace/BrowserContent.tsx
+  h_cc604c9bda8355 3,13-72,76-78,81-83,85-94,96-97,100-127,130-135,141,144-146,148,150-151,156,223-230
+src/hooks/useMention.ts
+  h_cc604c9bda8355 10,45-46,49,53-57,74-80,83,89-91,97,99,135-156,191-192,197,203
+src/i18n/zh.ts
+  h_cc604c9bda8355 187,1399-1404,1424-1428
+src/index.css
+  h_cc604c9bda8355 109-124
+src/lib/memory-injection-view.ts
+  h_cc604c9bda8355 1-52
+src/lib/mention-paths.ts
+  h_cc604c9bda8355 1-81
+src/lib/overlay-geometry.ts
+  h_cc604c9bda8355 1-49
+src/types/pi.d.ts
+  h_cc604c9bda8355 1452-1453
+src/types/shared.ts
+  h_cc604c9bda8355 119-120
+tests/chat/mention-paths.test.ts
+  h_cc604c9bda8355 1-79
+tests/goal/extension-before-agent-start.test.ts
+  h_cc604c9bda8355 1-121
+tests/hooks/before-agent-start.test.ts
+  h_cc604c9bda8355 1-112
+tests/lib/overlay-geometry.test.ts
+  h_cc604c9bda8355 1-77
+tests/memory/injection-view.test.ts
+  h_cc604c9bda8355 1-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a150ebba41fae088ae5d9e9aa57dc840c18c51fd",
+  "prompts": {},
+  "humans": {
+    "h_cc604c9bda8355": {
+      "author": "lollipopnougat <ab2defg145@gmail.com>"
+    }
+  }
+}
