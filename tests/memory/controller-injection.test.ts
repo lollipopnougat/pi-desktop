@@ -16,6 +16,8 @@ const { MemoryController } = await import('../../electron/memory/controller');
 const { writeMemoryFile, readMemoryFile } = await import('../../electron/memory/store');
 const { writeMemoryConfig, projectIdentity } = await import('../../electron/memory/config');
 const { writeState } = await import('../../electron/memory/pipeline');
+const { resetMemoryIndexStateForTests } = await import('../../electron/memory/search-index');
+const { resetSessionIndexStateForTests } = await import('../../electron/memory/session-index');
 
 const bridgeStub = {
   cwd: '/tmp/ctrl-proj',
@@ -35,7 +37,10 @@ function newController() {
 }
 
 function resetMemoryDir() {
-  fs.rmSync(tmpMemory, { recursive: true, force: true });
+  // SQLite 句柄必须先关：index.db 就建在 tmpMemory 里，Windows 下打开中的文件删不掉（EPERM）
+  resetMemoryIndexStateForTests();
+  resetSessionIndexStateForTests();
+  fs.rmSync(tmpMemory, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   fs.mkdirSync(tmpMemory, { recursive: true });
   // 默认配置：enabled=true, userProfileCharLimit=4000
   writeMemoryConfig({
@@ -51,7 +56,9 @@ beforeEach(() => {
 });
 
 afterAll(() => {
-  fs.rmSync(tmpMemory, { recursive: true, force: true });
+  resetMemoryIndexStateForTests();
+  resetSessionIndexStateForTests();
+  fs.rmSync(tmpMemory, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
 });
 
 describe('MemoryController 注入快照', () => {
