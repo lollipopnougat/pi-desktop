@@ -1,0 +1,145 @@
+AGENTS.md
+  s_9803825d2c1a63::t_a86c0a74312333 10,140,187,203-204,247,334-335,337,341-342
+README.md
+  s_269c1b37440987::t_293b6127fa2557 16,50,91-95,128,315-316
+electron/browser/controller.ts
+  s_269c1b37440987::t_f2a168571f4613 6,33-34,49-108,312-314,316,355-366,369-375
+electron/ipc/memory-ipc.ts
+  s_269c1b37440987::t_ba629efde7ec96 155-169
+electron/ipc/misc-ipc.ts
+  s_269c1b37440987::t_1e9e4d4960a198 16-22,63,69,71-75,77,83,97,99-107,109-114,121-126,128-129,132,134-137,143-149,158-178,180-181,188-190,193-202,205-212,217-223,227-236
+electron/ipc/session-ipc.ts
+  s_269c1b37440987::t_0bb72e22d65ee1 15,505-507
+electron/logs/channel-logs.ts
+  s_269c1b37440987::t_25a3c697ee196a 11-12
+electron/mcp/manager.ts
+  s_269c1b37440987::t_1f99c1fe7aed71 21,331-332,341-346,351-356
+electron/media/image-guard.ts
+  s_269c1b37440987::t_18a4ec336f3b48 1-157
+electron/memory/config.ts
+  s_269c1b37440987::t_1f9586619ef194 43-52,60-65,83-88
+electron/memory/controller.ts
+  s_269c1b37440987::t_928d6ab8ea87ff 32-33,35,345-382,405,430,432-458
+electron/memory/extension.ts
+  s_269c1b37440987::t_81dfea4e0faa39 6-9,12-13,15-19,22-44,59-61,71-72,78-79,81,86-87,89-100,111-137
+electron/memory/nudge.ts
+  s_269c1b37440987::t_98ea50178692fa 1-171
+electron/memory/search-index.ts
+  s_269c1b37440987::t_69cc7c75a18fc0 1-536
+electron/memory/search.ts
+  s_269c1b37440987::t_42d320851651cf 1-177
+electron/memory/session-index.ts
+  s_269c1b37440987::t_7ecaaae0e01f88 1-581
+electron/memory/tools.ts
+  s_269c1b37440987::t_cce54b9523602c 25-26,217-218,246-248,419-582
+electron/permission/policy.ts
+  s_269c1b37440987::t_29e2730bb0eb9e 51,69-70
+electron/pi-bridge.ts
+  s_269c1b37440987::t_9fbbe78ad9adc8 42-43,1131-1141,1183-1190
+electron/queued-messages.ts
+  s_269c1b37440987::t_7621468bd907c0 2,5-14,16-33,39-51,55,57,59-61,64-67,69-70,74-77,81,86,88,90-92,96-97,102,104-159
+electron/session-slot.ts
+  s_269c1b37440987::t_a5d87832e76ee0 3,108-113
+electron/tools/read-img-tool.ts
+  s_269c1b37440987::t_db9cb0861d6eef 65,72,200
+package.json
+  s_269c1b37440987::t_e630f3a45a2563 3
+preload.ts
+  s_269c1b37440987::t_7e5c91dcaf6bc4 14-17,20,510-512
+src/App.tsx
+  s_269c1b37440987::t_651bc04a6ebef6 53,81,107-111,138,141-142
+src/components/SettingsPage.tsx
+  s_269c1b37440987::t_72780ac75a7436 1,67-68,76-82
+src/components/background-tasks/BackgroundTaskPanel.tsx
+  s_269c1b37440987::t_2d9fc8e13b9ed7 278-284,310,313,316,373-374,432,443
+src/components/chat/ChatHeader.tsx
+  s_269c1b37440987::t_072a6aadb73e11 8-12,26,108-147
+src/components/chat/ChatInput.tsx
+  s_269c1b37440987::t_40afad9c5b5899 415-436,438-439,710,712-718
+src/components/chat/ChatStream.tsx
+  s_269c1b37440987::t_ce1b2143d8c2cf 8-9,133-134,180,185,232-235,269
+src/components/chat/QueueChips.tsx
+  s_269c1b37440987::t_5ea7fd14d00905 29-30,33-35,252
+src/components/chat/TodoPanel.tsx
+  s_269c1b37440987::t_6871eb6accd8a8 33-42,138,140-150
+src/components/chat/TodoProgressCapsule.tsx
+  s_269c1b37440987::t_a89eeb2ca61e95 5-11
+src/components/common/icons.ts
+  s_269c1b37440987::t_ce15d8d3922503 38,166
+src/components/settings/AppearanceTab.tsx
+  s_269c1b37440987::t_096b17b0c46198 27-28,227-238
+src/components/settings/MemoryTab.tsx
+  s_269c1b37440987::t_cbad6d75f6422d 7-8,30,33-34,81-99,104,108-119,221-359
+src/components/settings/settings-nav.ts
+  s_269c1b37440987::t_452e980f476d26 115,117-136
+src/components/subagents/SubagentPanel.tsx
+  s_269c1b37440987::t_cb9fa07b7b266c 2,128,131,133-134,142,144-161,166,173,183,205,210-219
+src/components/workspace/MemoryWorkspace.tsx
+  s_269c1b37440987::t_bbd27a04d1cd25 1-614
+src/components/workspace/RightWorkspace.tsx
+  s_269c1b37440987::t_a3233564263945 10-13,22-27,36-58,64,337-345,354-358,373-378,380,382-383,418-426,428-429,436-442,453-454,459-461,479-489,588-590
+src/hooks/usePiEvent.ts
+  s_269c1b37440987::t_e4e83210c12b4e 183-184
+src/i18n/zh.ts
+  s_269c1b37440987::t_9d313ed2e32975 626-628,1460-1531,1615-1616
+src/lib/app-commands.ts
+  s_269c1b37440987::t_bc70941c41139d 5-7,27-68
+src/store/pi-store.ts
+  s_269c1b37440987::t_4445d5ffe83196 20,334-336,338-340,357-358,469-470,637,764-765,855,857,872-873,1059-1068,1070,1085-1088
+src/types/pi.d.ts
+  s_269c1b37440987::t_3bdad10ac18831 22-28,321-330,362-383,433-434,867-868,1148-1151,1154,1158,1563-1566
+tests/browser/controller.test.ts
+  s_269c1b37440987::t_f24ece7073f2bb 19-23,60-69,71,74-76,213-304
+tests/chat/queue-ipc.test.ts
+  s_269c1b37440987::t_8635f04dbe30d0 17-18,24-33,37,41-54,58,65,167-252
+tests/chat/queued-messages.test.ts
+  s_269c1b37440987::t_4d13ce5b206169 3-10,13-16,18-38,42,44-48,51-52,54,57-58,61,63,67-69,71-73,75,77-79,81-84,87-88,90-92,95-100,103-115,117-128,131-133,135,137-142,144,147-151,153-154,157-158,160,163-167,169,171-172
+tests/mcp/call-tool-images.test.ts
+  s_269c1b37440987::t_b6a82f62d16042 1-63
+tests/media/image-guard.test.ts
+  s_269c1b37440987::t_45785d0fbe9735 1-151
+tests/memory/auto-sediment.test.ts
+  s_269c1b37440987::t_bad91c82132ffb 1-155
+tests/memory/extension-hooks.test.ts
+  s_269c1b37440987::t_36681b7ef31c13 1-142
+tests/memory/nudge.test.ts
+  s_269c1b37440987::t_212d2ac4775692 1-217
+tests/memory/pending-reviews.test.ts
+  s_269c1b37440987::t_5f6ea63cfdc766 1-70
+tests/memory/search-index.test.ts
+  s_269c1b37440987::t_f1e7c87b16335e 1-206
+tests/memory/search.test.ts
+  s_269c1b37440987::t_9f61523e258ef5 1-171
+tests/memory/session-index.test.ts
+  s_269c1b37440987::t_1a2cf5e13248fe 1-303
+tests/memory/tools.test.ts
+  s_269c1b37440987::t_079ef728396f61 105-138
+tests/session/pi-bridge.test.ts
+  s_269c1b37440987::t_ef4b796581b8ee 65-69,73,244-271
+tests/settings/translucent-panels.test.ts
+  s_269c1b37440987::t_4d0a7dffc067b4 1-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bd411d039aa67dbcbd3ad5f8dabbe72f7856a0b1",
+  "prompts": {},
+  "sessions": {
+    "s_269c1b37440987": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a190da-1d54-7ab1-9db3-28f274f6a082",
+        "model": "opencode-go/deepseek-v4.1-flash"
+      },
+      "human_author": "lollipopnougat <ab2defg145@gmail.com>"
+    },
+    "s_9803825d2c1a63": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a17e7e-7bd8-73b8-b60c-c2286ea53435",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "lollipopnougat <ab2defg145@gmail.com>"
+    }
+  }
+}
