@@ -19,6 +19,13 @@ import type { ModelPreset } from './model-preset';
 import type { UsageStatistics, UsageStatisticsQuery } from './usage-statistics';
 import type { ShortcutMap } from '../lib/shortcuts';
 
+/** 随消息发送的图片（等同 pi-ai 的 ImageContent） */
+export interface PromptImage {
+  type: 'image';
+  data: string;
+  mimeType: string;
+}
+
 // ─── 从主包类型推导出的间接类型（这些无法直接 import，借由已 re-export 的类型提取） ───
 
 /** Goal 模式状态 */
@@ -311,6 +318,16 @@ export interface MemoryConfig {
   consolidateThreshold: number;
   userProfileCharLimit: number;
   writePolicy: 'automatic' | 'review' | 'explicit';
+  /** 自动沉淀总开关：达到轮次/工具调用阈值时后台提取当前会话 */
+  autoExtract: boolean;
+  /** 自动沉淀的轮次阈值 */
+  nudgeTurns: number;
+  /** 自动沉淀的工具调用阈值 */
+  nudgeToolCalls: number;
+  /** 捕获用户纠正后立即沉淀 */
+  correctionDetect: boolean;
+  /** 上下文压缩前先沉淀 */
+  preCompactFlush: boolean;
 }
 
 /** Phase1 提取结果 */
@@ -340,6 +357,28 @@ export interface MemoryFileStat {
   size: number;
   entries: number;
   exists: boolean;
+}
+
+/** 记忆检索引擎（SQLite FTS5）状态 */
+export interface MemoryIndexStats {
+  available: boolean;
+  entries: number;
+  files: number;
+  bytes: number;
+  indexedAt: string | null;
+  usageEntries: number;
+  error?: string;
+  /** 会话消息索引（session_search 用；与记忆索引共用 index.db） */
+  sessions?: MemorySessionIndexStats;
+}
+
+/** 会话消息索引统计 */
+export interface MemorySessionIndexStats {
+  available: boolean;
+  entries: number;
+  files: number;
+  indexedAt: string | null;
+  error?: string;
 }
 
 /** 注入串的分段明细（本会话实际注入的记忆块） */
@@ -391,6 +430,8 @@ export interface MemoryStatus {
   extractModel: { provider: string; modelId: string } | null;
   consolidateThreshold: number;
   files: MemoryFileStat[];
+  /** 检索索引状态（三档模式/索引体积/命中统计） */
+  index: MemoryIndexStats;
   pendingExtractions: number;
   /** 提取失败的会话总数 */
   failedCount: number;
@@ -823,6 +864,8 @@ interface UiSettings {
   fontSize?: number;
   /** UI 字体族 */
   uiFontFamily?: string;
+  /** 毛玻璃半透明：标题栏/侧栏/状态栏是否透出窗口原生材质（false = 铺不透明底，默认 true） */
+  translucentPanels?: boolean;
   /** 会话侧栏宽度（px） */
   sidebarWidth?: number;
   /** 旧版代码面板宽度（仅迁移读取） */
@@ -1102,15 +1145,17 @@ export interface PiAPI {
   // === Prompting ===
   /** 返回 queued=true 表示已达并发上限、该回合在排队等待空位 */
   prompt(text: string, opts?: any): Promise<{ queued: boolean }>;
-  steer(text: string): Promise<void>;
-  followUp(text: string): Promise<void>;
+  /** 模型回复期间入队一条引导消息（可在流式期间带图发出） */
+  steer(text: string, opts?: { images?: PromptImage[] }): Promise<void>;
+  /** 模型回复期间入队一条排队消息（可在流式期间带图发出） */
+  followUp(text: string, opts?: { images?: PromptImage[] }): Promise<void>;
   abort(sessionKey?: string | null): Promise<void>;
   clearQueue(): Promise<{ steering: string[]; followUp: string[] }>;
-  /** 撤回单条排队消息到聊天框（clearQueue + 其余重新入队），返回被撤回文本 */
+  /** 撤回单条排队消息到聊天框（clearQueue + 其余重新入队，图片不丢），返回被撤回文本与图片 */
   revokeQueuedMessage(
     kind: 'steering' | 'followUp',
     index: number
-  ): Promise<{ ok: boolean; revoked: string }>;
+  ): Promise<{ ok: boolean; revoked: string; images?: PromptImage[] }>;
   /** 删除单条排队消息（只删这一条，不是清空队列），返回被删除文本 */
   removeQueuedMessage(
     kind: 'steering' | 'followUp',
@@ -1515,6 +1560,10 @@ export interface PiAPI {
     readEntry(id: string): Promise<MemoryEntryDetail | null>;
     getStatus(): Promise<MemoryStatus>;
     search(query: string): Promise<MemorySearchHit[]>;
+    /** 待审核候选数（记忆按钮角标；只数候选文件，不读索引） */
+    pendingReviews(): Promise<number>;
+    indexStatus(): Promise<MemoryIndexStats>;
+    reindex(): Promise<MemoryIndexStats>;
     readExtraction(fileName: string): Promise<string>;
   };
   onMemoryProgress(cb: (progress: MemoryExtractionProgress) => void): () => void;

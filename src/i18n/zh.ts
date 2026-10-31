@@ -623,6 +623,9 @@ export const t = {
   uiFontFamilyDesc: '整体界面使用的字体，多个用逗号分隔',
   uiFontFamilyPlaceholder:
     "'SF Mono', 'Fira Code', 'JetBrains Mono', 'Menlo', 'PingFang SC', 'Microsoft YaHei', '微软雅黑', 'Noto Sans CJK SC', monospace",
+  translucentPanels: '毛玻璃半透明',
+  translucentPanelsDesc:
+    '标题栏、左侧会话栏与底部状态栏透出窗口原生毛玻璃材质；关闭后这几个区域改为不透明背景色（不改窗口材质本身）',
   reset: '重置',
   providers: 'PROVIDER 配置',
   addProvider: '添加 Provider',
@@ -1454,7 +1457,78 @@ export const t = {
       `已有 ${n} 份待合并提取（阈值 ${threshold}），建议合并`,
     enabledInSettings: '在设置页启用记忆系统',
     extractingProgress: (done: number, total: number) => `提取进度 ${done}/${total}`,
-    noExtractModel: '未配置可用模型，无法提取'
+    noExtractModel: '未配置可用模型，无法提取',
+    // 自动沉淀
+    autoSection: '自动沉淀',
+    autoSectionDesc:
+      '对话进行中自动沉淀记忆：达到轮次阈值、捕获到纠正、或上下文即将压缩时，在后台提取一次。产物只进候选，需要你审核后才会写入记忆文件。',
+    autoExtractLabel: '自动沉淀',
+    autoExtractDesc: '关闭后只在手动点「从此项目会话提取」时才提取',
+    nudgeTurnsLabel: '轮次阈值',
+    nudgeTurnsDesc: '每 N 轮对话沉淀一次',
+    nudgeToolCallsLabel: '工具调用阈值',
+    nudgeToolCallsDesc: '累计 N 次工具调用后沉淀一次（与轮次阈值先到者生效）',
+    correctionLabel: '捕获纠正后立即沉淀',
+    correctionDesc: '消息里出现「不对 / 应该是 / 我说的是」等纠正信号时立刻提取',
+    preCompactLabel: '压缩前先沉淀',
+    preCompactDesc: '上下文压缩会丢掉对话细节，压缩前先提取一次',
+    autoSaved: '设置已保存',
+    autoSaveFailed: (msg: string) => `保存失败: ${msg}`,
+    // 检索索引（SQLite FTS5）
+    indexSection: '检索索引',
+    indexDesc:
+      '记忆与会话内容都走本地 SQLite FTS5 索引：按相关度排序，中文两字词与英文缩写也能命中。索引是派生数据，删掉或重建都不影响记忆文件与会话文件。',
+    indexEntries: '记忆条目',
+    indexSessions: '会话消息',
+    indexSessionsValue: (entries: number, files: number) => `${entries} 条 · ${files} 个会话`,
+    indexFiles: (n: number) => `${n} 个文件`,
+    indexSize: '索引体积',
+    indexUsage: (n: number) => `命中记录 ${n} 条`,
+    indexUpdated: (time: string) => `最后更新 ${time}`,
+    indexNever: '尚未建立索引（首次检索时自动创建）',
+    // 记忆工作区概览卡的短值（卡内已有标签，值不再重复标签文案）
+    pendingValue: (n: number) => `${n} 份`,
+    processedValue: (n: number) => `${n} 个`,
+    autoSedimentTrigger: (turns: number, toolCalls: number) =>
+      `${turns} 轮或 ${toolCalls} 次工具调用`,
+    indexSessionsEmpty: '尚未建立',
+    injectionSizeLabel: '注入字符',
+    indexRebuild: '重建索引',
+    indexRebuilding: '重建中...',
+    indexRebuilt: '索引已重建',
+    indexRebuildFailed: (msg: string) => `重建索引失败: ${msg}`,
+    indexUnavailable: (msg: string) => `索引不可用，已回退到子串检索：${msg}`,
+
+    // === 记忆工作区（右侧标签页） ===
+    pendingBadgeTitle: (n: number) => `有 ${n} 条记忆候选待审核`,
+    segOverview: '概览',
+    segInjection: '注入',
+    segReview: '审核',
+    refresh: '刷新',
+    disabledTitle: '记忆系统已关闭',
+    openSettings: '去设置',
+    statusLabel: '状态',
+    pendingLabel: '待合并',
+    processedLabel: '已处理会话',
+    lastConsolidationLabel: '上次合并',
+    neverConsolidated: '从未合并',
+    frozenAtLabel: '冻结时间',
+    viewInjection: '查看注入',
+    injectionNote: '注入内容在新会话或重载时冻结，本会话内不会随记忆变化',
+    autoSedimentTitle: '自动沉淀',
+    autoSedimentLabel: '触发方式',
+    autoSedimentOn: (turns: number, toolCalls: number) =>
+      `已开：${turns} 轮对话或 ${toolCalls} 次工具调用`,
+    autoSedimentOff: '已关闭（仅手动提取）',
+    autoSedimentNote: '自动沉淀只产出候选，需要在「审核」里确认后才写入记忆文件',
+    indexUpdatedLabel: '最后更新',
+    indexMemoryValue: (entries: number, files: number) => `${entries} 条 · ${files} 个文件`,
+    retryFailed: '重试失败会话',
+    failedReasonEmpty: '没有记录到错误信息',
+    actionHint: (pending: number, threshold: number) =>
+      pending >= threshold
+        ? `待合并 ${pending} 条，已达到合并阈值 ${threshold}`
+        : `待合并 ${pending} 条（达到 ${threshold} 条时提示合并）`
   },
 
   backgroundTasks: {
@@ -1538,6 +1612,8 @@ export const t = {
   subagents: {
     // 面板标题与入口
     panelTitle: '子 Agent',
+    runsCount: (n: number) => `共 ${n} 个运行`,
+    refresh: '刷新',
     panelEmpty: '暂无子任务。让主 Agent 调用 task 工具委派子任务。',
     closePanel: '关闭面板',
     stopRun: '停止',

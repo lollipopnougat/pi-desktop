@@ -112,9 +112,28 @@ export const SETTINGS_SEARCH_ENTRIES: SettingsSearchEntry[] = [
   },
   {
     tab: 'appearance',
-    title: '界面字号与字体',
+    title: '界面字号、字体与毛玻璃',
     section: t.appearance,
-    keywords: ['字号', '字体', '缩放', 'ui 字体', '界面', 'font', 'zoom']
+    keywords: [
+      '字号',
+      '字体',
+      '缩放',
+      'ui 字体',
+      '界面',
+      'font',
+      'zoom',
+      '毛玻璃',
+      '半透明',
+      '透明',
+      '不透明',
+      '玻璃',
+      '模糊',
+      '背景',
+      'vibrancy',
+      'acrylic',
+      'blur',
+      'translucent'
+    ]
   },
   {
     tab: 'appearance',

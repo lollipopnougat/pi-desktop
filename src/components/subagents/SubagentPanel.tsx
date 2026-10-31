@@ -1,5 +1,5 @@
 /**
- * SubagentPanel:子 agent 运行面板(ChatHeader 入口弹出)。
+ * SubagentPanel:子 agent 运行面板（右侧工作区的一个标签页，由聊天头部的 agents 按钮打开）。
  *
  * 实时展示(pi:subagentUpdate 推送):
  * - 每个_run:agent 名/任务摘要/状态徽标/当前工具/轮次/耗时
@@ -125,25 +125,13 @@ function RunCard({ run, onOpenDetail }: { run: SubagentRunState; onOpenDetail: (
   );
 }
 
-interface SubagentPanelProps {
-  open: boolean;
-  onClose: () => void;
-}
-
-export default function SubagentPanel({ open, onClose }: SubagentPanelProps) {
+export default function SubagentPanel() {
   const subagentSnapshot = usePiStore((s) => s.subagentSnapshot);
   const [detailRunId, setDetailRunId] = useState<string | null>(null);
-  // 面板打开时拉一次快照:覆盖「重开应用后面板未收到推送」的场景(历史 run 已从会话恢复)
+  // 标签被激活时组件才挂载：这里拉一次快照，覆盖「重开应用后没收到推送」的场景（历史 run 从会话恢复）
   useEffect(() => {
-    if (!open) return;
-    void window.pi.subagents
-      .getSnapshot()
-      .then((snap) => {
-        usePiStore.getState().setSubagentSnapshot(snap);
-      })
-      .catch(() => {});
-  }, [open]);
-  if (!open) return null;
+    void refreshSubagentSnapshot();
+  }, []);
 
   const runs = subagentSnapshot?.runs ?? [];
   const agents = subagentSnapshot?.agents ?? [];
@@ -151,45 +139,38 @@ export default function SubagentPanel({ open, onClose }: SubagentPanelProps) {
   const detailRun = detailRunId != null ? runs.find((r) => r.id === detailRunId) : null;
 
   return (
-    <div
-      className="fixed z-40 flex flex-col rounded-lg border border-od-border-light bg-od-bg-alt shadow-2xl"
-      style={{
-        top: window.pi?.platform === 'darwin' ? 44 : 36,
-        right: 12,
-        width: 520,
-        minHeight: 200,
-        maxHeight: '70vh'
-      }}
-    >
+    <div className="flex h-full min-h-0 flex-col bg-od-bg-dark">
       {/* Header */}
-      <div className="flex shrink-0 items-center justify-between border-b border-od-border px-3 py-2">
-        <div className="flex items-center gap-2 text-xs font-medium text-od-text-bright">
-          <Icon name="agents" className="w-3" />
-          <span>{t.subagents.panelTitle}</span>
-          {activeCount > 0 && (
-            <span className="rounded bg-od-bg-dark px-1.5 text-xs text-od-accent">
-              {activeCount}
-            </span>
-          )}
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-od-border bg-od-bg-alt px-3">
+        <Icon name="agents" className="w-3 text-od-accent" />
+        <span className="text-xs font-medium text-od-text-bright">{t.subagents.panelTitle}</span>
+        {activeCount > 0 && (
+          <span className="rounded bg-od-bg-hover px-1.5 text-xs text-od-accent">
+            {activeCount}
+          </span>
+        )}
+        <div className="ml-auto flex items-center gap-2 text-xs text-od-text-dim">
+          {t.subagents.runsCount(runs.length)}
+          <button
+            type="button"
+            onClick={() => void refreshSubagentSnapshot()}
+            className="flex h-6 w-6 items-center justify-center rounded text-od-text-dim hover:bg-od-bg-hover hover:text-od-text-bright"
+            title={t.subagents.refresh}
+          >
+            <Icon name="rotate" className="w-3" />
+          </button>
         </div>
-        <button
-          onClick={onClose}
-          className="flex h-6 w-6 items-center justify-center rounded text-od-text-dim transition-colors hover:bg-od-bg-hover hover:text-od-text-bright"
-          title={t.subagents.closePanel}
-        >
-          <Icon name="close" className="w-3" />
-        </button>
       </div>
 
       {/* Runs */}
-      <div className="flex-1 overflow-y-auto px-2 py-2">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
         {runs.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center px-4 py-6 text-center">
             <Icon name="agents" className="mb-2 w-8 text-od-text-dim" />
             <p className="text-xs text-od-text-dim">{t.subagents.panelEmpty}</p>
           </div>
         ) : (
-          <div className="flex flex-col gap-1.5">
+          <div className="mx-auto flex w-full max-w-[56rem] flex-col gap-1.5">
             {runs.map((run) => (
               <RunCard key={run.id} run={run} onOpenDetail={() => setDetailRunId(run.id)} />
             ))}
@@ -199,7 +180,7 @@ export default function SubagentPanel({ open, onClose }: SubagentPanelProps) {
 
       {/* 可用 agent 列表 */}
       {agents.length > 0 && (
-        <div className="max-h-40 shrink-0 overflow-y-auto border-t border-od-border px-3 py-2">
+        <div className="max-h-40 shrink-0 overflow-y-auto border-t border-od-border bg-od-bg-alt px-3 py-2">
           <div className="mb-1 text-xs font-medium text-od-text-dim">
             {t.subagents.agentsSectionTitle}
           </div>
@@ -221,8 +202,18 @@ export default function SubagentPanel({ open, onClose }: SubagentPanelProps) {
         </div>
       )}
 
-      {/* 详情弹窗 */}
+      {/* 详情弹窗（工作区内的模态，仍浮在面板之上） */}
       {detailRun && <SubagentRunDetailModal run={detailRun} onClose={() => setDetailRunId(null)} />}
     </div>
   );
+}
+
+/** 拉一次主进程快照并写回 store（标签激活时 / 点刷新时用） */
+async function refreshSubagentSnapshot(): Promise<void> {
+  try {
+    const snapshot = await window.pi.subagents.getSnapshot();
+    usePiStore.getState().setSubagentSnapshot(snapshot);
+  } catch {
+    /* 子 agent 服务不可用：保留旧快照 */
+  }
 }

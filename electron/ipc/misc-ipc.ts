@@ -13,7 +13,13 @@ import { showSystemNotification } from '../notifications';
 import { resolveReadablePath, isInsideProject } from '../project-path';
 import { sameSession, type SessionIdentity } from '../../src/types/session';
 import { detectExternalApps, openExternalApp } from '../external-apps';
-import { removeQueuedAt, moveQueuedAt } from '../queued-messages';
+import {
+  moveQueuedMessage,
+  reconcileQueuedMessages,
+  removeQueuedMessageAt,
+  switchQueuedMessageKind
+} from '../queued-messages';
+import type { QueueKind, QueuedImage, QueuedMessage } from '../queued-messages';
 import { openThirdPartyNoticesWindow } from '../third-party-notices';
 
 /** 判断 skill 是否为内置只读技能（位于 builtinSkillsDir 之下，与 skill-ipc 同一判定） */
@@ -54,24 +60,27 @@ export interface MiscContext extends PiBridgeContext {
 }
 
 /**
- * 非视觉模型的图片降级处理（发送带图片消息时）：
+ * 图片附件的视觉能力降级（prompt / steer / followUp 共用）：
  * pi-ai transform-messages 会把 image 块替换成无信息量占位符
  * "(image omitted: model does not support images)"，模型完全看不到图片。
  * 此处把图片落盘为临时文件，在文本末尾注入路径说明，并剥离 images
  * （反正发送也只会被降级为占位符，且部分供应商会直接报错）。
  * - 模型支持视觉：原样透传（image 块正常送达模型）
- * - 不支持视觉：文本注入路径提示（配合 read_img 工具使用）
+ * - 不支持视觉：文本注入路径提示（配合 read_img 工具使用）+ 图片剥离
  */
-function normalizePromptImages(session: any, text: string, opts?: any): [string, any | undefined] {
-  const images = opts?.images;
+function normalizeAttachments(
+  session: any,
+  text: string,
+  images?: QueuedImage[]
+): { text: string; images?: QueuedImage[] } {
   if (!Array.isArray(images) || images.length === 0) {
-    return [text, opts];
+    return { text, images };
   }
   try {
     const model = session?.model ?? session?.agent?.state?.model;
     const supportsVision = Array.isArray(model?.input) && model.input.includes('image');
     if (supportsVision) {
-      return [text, opts];
+      return { text, images };
     }
     // 非视觉模型：落盘 + 注入路径提示 + 剥离 images
     const savedPaths = saveImagesToTempFiles(images);
@@ -85,35 +94,57 @@ function normalizePromptImages(session: any, text: string, opts?: any): [string,
       // 落盘失败：至少告知模型图片存在（优于无声丢弃）
       nextText = `${text}\n\n[用户随消息发送了 ${images.length} 张图片，但当前模型不支持图片输入且保存失败。]`;
     }
-    const { images: _stripped, ...restOpts } = opts ?? {};
-    return [nextText, restOpts];
+    return { text: nextText, images: undefined };
   } catch {
-    return [text, opts]; // 处理异常不阻塞消息发送
+    return { text, images }; // 处理异常不阻塞消息发送
   }
+}
+
+/** prompt 选项形式：只在降级时剥离 opts.images，其余选项原样透传 */
+function normalizePromptImages(session: any, text: string, opts?: any): [string, any | undefined] {
+  const images = opts?.images;
+  if (!Array.isArray(images) || images.length === 0) {
+    return [text, opts];
+  }
+  const normalized = normalizeAttachments(session, text, images);
+  if (normalized.images) {
+    return [normalized.text, opts];
+  }
+  const { images: _stripped, ...restOpts } = opts ?? {};
+  return [normalized.text, restOpts];
 }
 
 /**
  * 注册杂项 IPC：prompting / state / commands / compaction / sessionStats / file ops / cwd / dialog
  */
 export function registerMiscIpc(ctx: MiscContext) {
+  /** 取会话槽的排队镜像（测试替身没有该字段时按空队列处理） */
+  const queueMirror = (slot: any): QueuedMessage[] => {
+    if (!Array.isArray(slot.queuedMessages)) slot.queuedMessages = [];
+    return slot.queuedMessages as QueuedMessage[];
+  };
+
   /**
-   * 清空后重新入队（保持各队列内部的原顺序）。
+   * 清空 SDK 队列后按镜像重新入队（补齐图片）。
+   * 文本在 clearQueue() 时就已从 SDK 队列里丢掉，图片只存在于镜像里。
    * 失败时队列已由 queue_update 事件同步，UI 会反映真实状态。
    */
-  const reenqueuePending = async (
-    session: {
-      steer: (text: string) => Promise<unknown>;
-      followUp: (text: string) => Promise<unknown>;
-    },
-    steering: string[],
-    followUp: string[]
-  ): Promise<void> => {
+  const applyQueue = async (session: any, list: QueuedMessage[]): Promise<void> => {
     try {
-      for (const s of steering) await session.steer(s);
-      for (const f of followUp) await session.followUp(f);
+      for (const message of list) {
+        if (message.kind === 'steering') await session.steer(message.text, message.images);
+        else await session.followUp(message.text, message.images);
+      }
     } catch {
       /* 重新入队失败时队列已被事件同步，UI 会反映真实状态 */
     }
+  };
+
+  /** 清空 SDK 队列并用快照对齐镜像，返回可编辑的镜像（对齐后写回槽） */
+  const takeQueue = (slot: any, session: any): QueuedMessage[] => {
+    const aligned = reconcileQueuedMessages(queueMirror(slot), session.clearQueue());
+    slot.queuedMessages = aligned;
+    return aligned;
   };
 
   // === Prompting ===
@@ -124,76 +155,85 @@ export function registerMiscIpc(ctx: MiscContext) {
     const [normalized, promptOpts] = normalizePromptImages(session, text, opts);
     return ctx.submitPrompt(normalized, promptOpts, slot.key);
   });
-  ipcMain.handle('pi:steer', async (_e, text: string) => {
-    await ctx.sessionFor().requireSession().steer(text);
+  /**
+   * 入队一条引导/排队消息并记账（图片跟消息一起走，与 prompt 同一套非视觉模型降级）。
+   * 只记真正进了队列的（disposition === 'queued'）："handled" 表示被输入处理器就地消费。
+   */
+  const enqueueMessage = async (
+    slot: any,
+    kind: QueueKind,
+    text: string,
+    images?: QueuedImage[]
+  ): Promise<void> => {
+    const session = slot.requireSession();
+    const normalized = normalizeAttachments(session, text, images);
+    const disposition =
+      kind === 'steering'
+        ? await session.steer(normalized.text, normalized.images)
+        : await session.followUp(normalized.text, normalized.images);
+    if (disposition === 'handled') return;
+    queueMirror(slot).push({ kind, text: normalized.text, images: normalized.images });
+  };
+  ipcMain.handle('pi:steer', async (_e, text: string, opts?: { images?: QueuedImage[] }) => {
+    await enqueueMessage(ctx.sessionFor(), 'steering', text, opts?.images);
   });
-  ipcMain.handle('pi:followUp', async (_e, text: string) => {
-    await ctx.sessionFor().requireSession().followUp(text);
+  ipcMain.handle('pi:followUp', async (_e, text: string, opts?: { images?: QueuedImage[] }) => {
+    await enqueueMessage(ctx.sessionFor(), 'followUp', text, opts?.images);
   });
   // 可按会话键停止：侧栏能停后台会话，而不必先切过去（不传 = 焦点会话）
   ipcMain.handle('pi:abort', async (_e, sessionKey?: string | null) => {
     await ctx.abortSlot(sessionKey ?? null);
   });
   ipcMain.handle('pi:clearQueue', async () => {
-    return ctx.sessionFor().requireSession().clearQueue();
+    const slot = ctx.sessionFor();
+    slot.queuedMessages = [];
+    return slot.requireSession().clearQueue();
   });
 
-  // 撤回单条排队消息：clearQueue 后把其余消息按原顺序重新入队，返回被撤回的文本
-  ipcMain.handle(
-    'pi:revokeQueuedMessage',
-    async (_e, kind: 'steering' | 'followUp', index: number) => {
-      const session = ctx.sessionFor().requireSession();
-      const { steering, followUp, removed } = removeQueuedAt(session.clearQueue(), kind, index);
-      // 重新入队（保持顺序；steer/followUp 在 streaming 时入队，idle 时直接发送）
-      await reenqueuePending(session, steering, followUp);
-      return { ok: removed !== null, revoked: removed ?? '' };
-    }
-  );
+  // 撤回单条排队消息：clearQueue 后把其余消息按原顺序重新入队（带回图片），返回被撤回的文本
+  ipcMain.handle('pi:revokeQueuedMessage', async (_e, kind: QueueKind, index: number) => {
+    const slot = ctx.sessionFor();
+    const session = slot.requireSession();
+    const { list, removed } = removeQueuedMessageAt(takeQueue(slot, session), kind, index);
+    slot.queuedMessages = list;
+    // 重新入队（保持顺序；steer/followUp 在 streaming 时入队，idle 时直接发送）
+    await applyQueue(session, list);
+    return { ok: removed !== null, revoked: removed?.text ?? '', images: removed?.images };
+  });
 
   // 删除单条排队消息：与 revoke 同为「只摘掉一条」，差别只在调用方语义（删除 vs 撤回编辑）
-  ipcMain.handle(
-    'pi:removeQueuedMessage',
-    async (_e, kind: 'steering' | 'followUp', index: number) => {
-      const session = ctx.sessionFor().requireSession();
-      const { steering, followUp, removed } = removeQueuedAt(session.clearQueue(), kind, index);
-      await reenqueuePending(session, steering, followUp);
-      return { ok: removed !== null, removed: removed ?? '' };
-    }
-  );
+  ipcMain.handle('pi:removeQueuedMessage', async (_e, kind: QueueKind, index: number) => {
+    const slot = ctx.sessionFor();
+    const session = slot.requireSession();
+    const { list, removed } = removeQueuedMessageAt(takeQueue(slot, session), kind, index);
+    slot.queuedMessages = list;
+    await applyQueue(session, list);
+    return { ok: removed !== null, removed: removed?.text ?? '' };
+  });
 
   // 同队列内拖拽排序：把第 from 条移到插入点 to（to 语义 = 插到第 to 条之前，to === length 即队尾）
   ipcMain.handle(
     'pi:reorderQueuedMessage',
-    async (_e, kind: 'steering' | 'followUp', from: number, to: number) => {
-      const session = ctx.sessionFor().requireSession();
-      const { steering, followUp, moved } = moveQueuedAt(session.clearQueue(), kind, from, to);
-      await reenqueuePending(session, steering, followUp);
-      return { ok: moved !== null, moved: moved ?? '' };
+    async (_e, kind: QueueKind, from: number, to: number) => {
+      const slot = ctx.sessionFor();
+      const session = slot.requireSession();
+      const { list, moved } = moveQueuedMessage(takeQueue(slot, session), kind, from, to);
+      slot.queuedMessages = list;
+      await applyQueue(session, list);
+      return { ok: moved !== null, moved: moved?.text ?? '' };
     }
   );
 
-  // 切换单条排队消息的投递方式（引导 ↔ 排队）：clearQueue 后把该条移入另一队列，其余按原顺序重新入队
-  ipcMain.handle(
-    'pi:switchQueuedMessage',
-    async (_e, kind: 'steering' | 'followUp', index: number) => {
-      const session = ctx.sessionFor().requireSession();
-      const { steering, followUp } = session.clearQueue();
-      const steerRest = [...steering];
-      const followRest = [...followUp];
-      const from = kind === 'steering' ? steerRest : followRest;
-      const to = kind === 'steering' ? followRest : steerRest;
-      // 索引失效（队列已被推进/清空）：原样恢复，不抛错
-      if (index < 0 || index >= from.length) {
-        await reenqueuePending(session, steerRest, followRest);
-        return { ok: false };
-      }
-      // 移到目标队列末尾（两个队列之间不存在跨队列排序，追加即可）
-      const [text] = from.splice(index, 1);
-      to.push(text);
-      await reenqueuePending(session, steerRest, followRest);
-      return { ok: true, text };
-    }
-  );
+  // 切换单条排队消息的投递方式（引导 ↔ 排队）：移入另一队列末尾，其余按原顺序重新入队
+  ipcMain.handle('pi:switchQueuedMessage', async (_e, kind: QueueKind, index: number) => {
+    const slot = ctx.sessionFor();
+    const session = slot.requireSession();
+    const { list, moved } = switchQueuedMessageKind(takeQueue(slot, session), kind, index);
+    slot.queuedMessages = list;
+    // 索引失效（队列已被推进/清空）：原样恢复，不抛错
+    await applyQueue(session, list);
+    return moved ? { ok: true, text: moved.text } : { ok: false };
+  });
 
   // === State ===
   ipcMain.handle('pi:getState', () => {

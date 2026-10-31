@@ -40,6 +40,16 @@ export interface MemoryConfig {
   userProfileCharLimit: number;
   /** 保留已有工具写入授权；可切换为候选审核或仅显式记住 */
   writePolicy: 'automatic' | 'review' | 'explicit';
+  /** 自动沉淀总开关：达到轮次/工具调用阈值时后台提取当前会话 */
+  autoExtract: boolean;
+  /** 自动沉淀的轮次阈值（每 N 轮触发一次提取） */
+  nudgeTurns: number;
+  /** 自动沉淀的工具调用阈值（每 N 次工具调用触发一次提取） */
+  nudgeToolCalls: number;
+  /** 捕获用户纠正（「不对/应该是…」）后立即沉淀 */
+  correctionDetect: boolean;
+  /** 上下文压缩前先沉淀，避免被压缩掉的对话丢失 */
+  preCompactFlush: boolean;
 }
 
 export const DEFAULT_MEMORY_CONFIG: MemoryConfig = {
@@ -47,7 +57,12 @@ export const DEFAULT_MEMORY_CONFIG: MemoryConfig = {
   extractModel: null,
   consolidateThreshold: 5,
   userProfileCharLimit: 4000,
-  writePolicy: 'automatic'
+  writePolicy: 'automatic',
+  autoExtract: true,
+  nudgeTurns: 12,
+  nudgeToolCalls: 20,
+  correctionDetect: true,
+  preCompactFlush: true
 };
 
 const CONFIG_FILE = 'config.json';
@@ -65,6 +80,12 @@ export function readMemoryConfig(): MemoryConfig {
       writePolicy: ['automatic', 'review', 'explicit'].includes(parsed.writePolicy)
         ? parsed.writePolicy
         : 'automatic',
+      autoExtract: typeof parsed.autoExtract === 'boolean' ? parsed.autoExtract : true,
+      nudgeTurns: boundedNumber(parsed.nudgeTurns, 12, 3, 200),
+      nudgeToolCalls: boundedNumber(parsed.nudgeToolCalls, 20, 5, 500),
+      correctionDetect:
+        typeof parsed.correctionDetect === 'boolean' ? parsed.correctionDetect : true,
+      preCompactFlush: typeof parsed.preCompactFlush === 'boolean' ? parsed.preCompactFlush : true,
       extractModel:
         parsed.extractModel &&
         typeof parsed.extractModel === 'object' &&

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePiStore } from '../store/pi-store';
 import Icon from './common/Icon';
 import McpIcon from './common/McpIcon';
@@ -64,12 +64,21 @@ function flashSection(el: HTMLElement) {
  */
 export default function SettingsPage() {
   const setSettingsOpen = usePiStore((s) => s.setSettingsOpen);
+  const requestedTab = usePiStore((s) => s.settingsTab);
+  const setSettingsTab = usePiStore((s) => s.setSettingsTab);
   const [activeTab, setActiveTab] = useState<SettingsTabKey>('appearance');
   const [query, setQuery] = useState('');
   const [cursor, setCursor] = useState(0);
   const contentRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const isMac = window.pi?.platform === 'darwin';
+
+  // 深链：其它面板（如记忆工作区）请求「去设置」时直接落到指定 tab，消费后清空
+  useEffect(() => {
+    if (!requestedTab) return;
+    setActiveTab(requestedTab);
+    setSettingsTab(null);
+  }, [requestedTab, setSettingsTab]);
 
   const rows = useMemo(() => flattenSettingsResults(searchSettings(query)), [query]);
   const searching = query.trim().length > 0;

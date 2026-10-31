@@ -412,14 +412,31 @@ export default function ChatInput() {
   // 模型回复期间的默认投递方式（设置页「待发送消息」）：Enter / 发送按钮走默认，Alt+Enter 走另一种
   const primarySendLabel = streamingSendMode === 'steer' ? t.steerSend : t.followUpSend;
   const secondarySendLabel = streamingSendMode === 'steer' ? t.followUpSend : t.steerSend;
-  const sendWhileStreaming = (value: string) => {
-    if (streamingSendMode === 'steer') window.pi.steer(value);
-    else window.pi.followUp(value);
+  /** 把输入框里待发送的附件转成 IPC 载荷（不改输入框；无附件时返回 undefined） */
+  const pendingImagePayload = () =>
+    pendingImages.length === 0
+      ? undefined
+      : pendingImages.map((img) => ({
+          type: 'image' as const,
+          data: img.data,
+          mimeType: img.mediaType
+        }));
+  // 模型回复期间的发送：附件跟文本一起入队（主进程按模型视觉能力决定是否降级为落盘路径）
+  // alternate=true 表示用「另一种」投递方式（Alt+Enter）
+  const dispatchWhileStreaming = (value: string, alternate = false) => {
+    const images = pendingImagePayload();
+    const restored = pendingImages;
+    setPendingImages([]);
+    const useSteer = alternate ? streamingSendMode !== 'steer' : streamingSendMode === 'steer';
+    const send = useSteer ? window.pi.steer : window.pi.followUp;
+    void send(value, images ? { images } : undefined).catch((e: any) => {
+      // 失败时把附件还回输入区（文本已由调用方清空），并提示错误，不静默吞掉
+      if (restored.length > 0) setPendingImages((prev) => [...restored, ...prev]);
+      setSendError(e?.message || t.sendFailed);
+    });
   };
-  const sendOtherWhileStreaming = (value: string) => {
-    if (streamingSendMode === 'steer') window.pi.followUp(value);
-    else window.pi.steer(value);
-  };
+  const sendWhileStreaming = (value: string) => dispatchWhileStreaming(value);
+  const sendOtherWhileStreaming = (value: string) => dispatchWhileStreaming(value, true);
 
   const handleSend = useCallback(async () => {
     const raw = text.trim();
@@ -690,8 +707,15 @@ export default function ChatInput() {
       <QueueChips
         steering={queue.steering}
         followUp={queue.followUp}
-        onRevokeText={(text) => {
+        onRevokeText={(text, images) => {
           setText(text);
+          // 撤回时把那条消息的图片一起还回附件区（否则图片会随着重新编辑丢掉）
+          if (images?.length) {
+            setPendingImages((prev) => [
+              ...prev,
+              ...images.map((img) => ({ data: img.data, mediaType: img.mimeType, name: '' }))
+            ]);
+          }
           textareaRef.current?.focus();
         }}
       />

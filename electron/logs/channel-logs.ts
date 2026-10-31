@@ -8,7 +8,8 @@
  * - tools：`gate`（权限闸门判定结论）、`exec`（工具执行结果与耗时）
  * - permission：`request`（弹出的人工审批请求）、`decision`（用户的允许/拒绝）
  * - app：`start`（启动）、`quit`（退出）、`error`（未捕获异常）、`config`（日志配置变更）、
- *   `slots`（会话槽生命周期：焦点切换 / 槽释放 / 中止 / MCP 重指）
+ *   `slots`（会话槽生命周期：焦点切换 / 槽释放 / 中止 / MCP 重指）、
+ *   `images`（丢弃会话历史里的非法图片块，见 docs/report2.md）
  *
  * **默认不落正文**：文本一律经 textSummary —— info 级只给字符数，debug 级才带开头预览。
  * 需要完整内容时由调用方自己补充字段（例如决策模型的 state/questions）。

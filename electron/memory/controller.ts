@@ -29,7 +29,10 @@ import {
   memoryTopicIndex,
   stripMetadata
 } from './store';
+import { memoryIndexStats, searchIndexedMemories } from './search-index';
+import { rebuildSessionIndex, sessionIndexStats, type SessionIndexStats } from './session-index';
 import { redactSecrets } from './secrets';
+import { rebuildMemoryIndex } from './search-index';
 import {
   runExtraction,
   runConsolidation,
@@ -339,6 +342,44 @@ export class MemoryController {
     return task;
   }
 
+  // ─── 自动沉淀（extension 的 turn_end / 纠错捕获 / 压缩前 flush 调用） ───
+
+  /**
+   * 后台沉淀：跑一次增量提取（会话水位线保证只处理有新内容的会话），
+   * 待合并提取数达到阈值时再自动合并成候选。
+   *
+   * 三条约束：
+   * 1. 已有任务在跑就直接跳过（不排队，避免每轮都堆一个任务）；
+   * 2. 任何异常都吞掉——记忆绝不拖垮主循环；
+   * 3. 产物只到候选（extractions → candidates），永不直接改记忆文件。
+   */
+  async autoSediment(reason: 'nudge' | 'correction' | 'compact'): Promise<void> {
+    if (this.disposed) return;
+    try {
+      const config = readMemoryConfig();
+      if (!config.enabled) return;
+      if (reason === 'correction' ? !config.correctionDetect : !config.autoExtract) return;
+      if (reason === 'compact' && !config.preCompactFlush) return;
+      if (this.job || this.extracting) return;
+      const result = await this.triggerExtraction();
+      if (!result.ok) return;
+      await this.autoConsolidate(config);
+    } catch {
+      /* 自动沉淀失败不影响对话 */
+    }
+  }
+
+  private async autoConsolidate(config: MemoryConfig): Promise<void> {
+    try {
+      if (this.job || this.consolidating) return;
+      const pending = pendingForProject(readState(), this.getProjectId()).length;
+      if (pending < Math.max(1, config.consolidateThreshold)) return;
+      await this.triggerConsolidation();
+    } catch {
+      /* 合并失败留到手工触发 */
+    }
+  }
+
   isBusy(): { extracting: boolean; consolidating: boolean } {
     return { extracting: this.extracting, consolidating: this.consolidating };
   }
@@ -361,6 +402,7 @@ export class MemoryController {
       failedCount: failedSessions.length,
       failedSessions: failedSessions.slice(0, MAX_FAILED_SESSIONS),
       extractionFiles: listExtractionFiles(projectId).slice(-20),
+      index: { ...memoryIndexStats(false), sessions: sessionIndexStats(false) },
       lastConsolidation: state.lastConsolidation ?? null,
       processedCount: Object.values(state.processed).filter((p) => p.projectId === projectId)
         .length,
@@ -385,8 +427,35 @@ export class MemoryController {
     };
   }
 
+  /** 检索：索引可用时走 FTS5（BM25 + 使用度），否则回退子串检索 */
   search(query: string): MemorySearchHit[] {
-    return searchMemory(query, this.getProjectId());
+    const projectId = this.getProjectId();
+    return searchIndexedMemories(query, projectId) ?? searchMemory(query, projectId);
+  }
+
+  /**
+   * 待审核候选数（记忆按钮角标用）。只读 candidates 目录，不碰索引/水位线，
+   * 可以安全地被渲染进程随时调用。
+   */
+  getPendingReviewCount(): number {
+    if (!this.isEnabled()) return 0;
+    try {
+      return listCandidates(this.getProjectId()).length;
+    } catch {
+      return 0;
+    }
+  }
+
+  /** 记忆索引状态（面板展示；不触发增量同步，避免状态轮询产生 IO） */
+  getIndexStats() {
+    return { ...memoryIndexStats(false), sessions: sessionIndexStats(false) };
+  }
+
+  /** 全量重建两类索引（记忆 + 会话），返回重建后的状态 */
+  rebuildIndexes() {
+    const memory = rebuildMemoryIndex();
+    const sessions: SessionIndexStats = rebuildSessionIndex();
+    return { ...memory, sessions };
   }
 
   /** config.extractModel 设置（UI 选择器） */

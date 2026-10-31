@@ -7,7 +7,7 @@
 **pi-desktop** —— 基于 pi agent SDK（`@earendil-works/pi-coding-agent`）构建的 Electron 桌面端 AI 编码助手。提供对话、会话树、代码/diff 工作区、内置终端与浏览器、MCP、技能与钩子、记忆、Goal/Plan 长任务、子 agent 与后台任务、多供应商模型管理等能力。
 
 - 技术栈：Electron 44 + React 18 + TypeScript 5 + Vite 6 + Zustand 4（单一 store）+ Tailwind CSS 3 + Monaco Editor + xterm.js/node-pty
-- pi SDK 版本：`@earendil-works/pi-coding-agent@1.0.1`（底层依赖 `@earendil-works/pi-ai`、`@earendil-works/pi-agent-core`），**进程内**使用，不 spawn `pi` CLI
+- pi SDK 版本：`@earendil-works/pi-coding-agent@1.4.0`（底层依赖 `@earendil-works/pi-ai`、`@earendil-works/pi-agent-core`），**进程内**使用，不 spawn `pi` CLI
 - 配置目录：`~/.pi-desktop/`，与 pi CLI 的 `~/.pi/agent/` 完全隔离（无迁移）
 - UI 色板：One Dark Pro（Tailwind 自定义 `od-*` 色系，见 `tailwind.config.ts`）
 - 语言：界面文案为中文，集中管理在 `src/i18n/zh.ts`
@@ -137,6 +137,7 @@ Electron 主进程 (electron/)
 - **文件写入无锁**：同项目两个会话可以同时改同一文件 / 跑 git 命令，只有 `resolveProjectPath` 的项目边界校验，没有文件级互斥（产品取舍，UI 也未提示）。
 - 记忆是「读-改-写 + 乐观版本校验」（`electron/memory/persistence.ts` 的 `commitMemoryChanges` 比对 `revisionOf(readRaw(file))`）：并发时后者抛「记忆版本冲突」并干净放弃（不写坏文件），需重试；`~/.pi-desktop/memory/` 的 `state.json` / `tombstones.json` / 管道文件是全局单份、**无跨进程锁** → 两个 Pi Desktop 实例（即使 user-data-dir 不同，配置目录相同）会互相覆盖。
 - 并发闸门只拦 `submitPrompt()`：goal 的 `agent_end` 续跑走 SDK 内部 `agent.continue()`，不受 `MAX_RUNNING_SESSIONS` 限制，多个 goal 会话可同时跑。
+- **排队消息（steer / followUp）的图片必须靠 `SessionSlot.queuedMessages` 镜像保住**：SDK 的 `steer(text, images)` / `followUp(text, images)` 支持带图，但图片只存在 agent 队列里——`clearQueue()` 与 `queue_update` 事件都**只回文本**。而单条撤回/删除/拖拽重排/切换投递方式全是「clearQueue → 改快照 → 重新入队」，不记镜像就会把那条消息的图片静默丢掉。约定：`electron/ipc/misc-ipc.ts` 里入队必记账（`enqueueMessage`，`disposition === 'queued'` 才算真入队，图片走与 `pi:prompt` 同一套 `normalizeAttachments` 非视觉模型降级），队列编辑前先用 `reconcileQueuedMessages(mirror, session.clearQueue())` 对齐（引导消息已被 SDK 投递、或重启后镜像为空，都不能多入队），纯函数在 `electron/queued-messages.ts`。**已知未做**：队列 chip 上没有图片角标（`queue_update` 只给文本，要显示得再加一条自带镜像统计的事件）。
 - 后台槽不推事件 ⇒ 在途流式文本要等下一个 delta（~30ms）才出现在界面上（`src/lib/streaming-message.ts` 仍是模块级单槽，按会话分键未做）。
 - `pi:exportSessionHtml` 对未加载的旧会话走 SDK `exportFromFile`：免切换但导出页不含 systemPrompt / tools 附录段（只有 `exportSessionToHtml` 有，而它没从包根导出）。
 
@@ -183,7 +184,7 @@ Electron 主进程 (electron/)
 | Goal / Plan           | `electron/goal/`、`electron/plan/`                                                                                         | `goal-ipc.ts`、`plan-ipc.ts`                                 | `components/goal/**`、`components/plan/**`           | —                  |
 | 子 agent              | `electron/subagents/`                                                                                                      | `subagent-ipc.ts`                                            | `components/subagents/**`、`settings/SubagentsSection.tsx` | 智能体配置         |
 | 后台任务              | `electron/background-tasks/`                                                                                               | `background-task-ipc.ts`                                     | `components/background-tasks/**`                     | —                  |
-| 记忆                  | `electron/memory/`                                                                                                         | `memory-ipc.ts`                                              | `settings/MemoryTab.tsx`                             | 记忆系统           |
+| 记忆                  | `electron/memory/`（`search-index`、`session-index`、`search`、`nudge`）                                                  | `memory-ipc.ts`                                             | `settings/MemoryTab.tsx`、`session/ProjectMemoryTab.tsx`、`workspace/MemoryWorkspace.tsx`、`memory/MemoryFileCard.tsx`| 记忆系统           |
 | 钩子                  | `electron/hooks/`                                                                                                          | `hook-ipc.ts`                                                | `settings/HooksTab.tsx`                              | 钩子               |
 | MCP                   | `electron/mcp/`                                                                                                            | `mcp-ipc.ts`                                                 | `settings/McpTab.tsx`                                | MCP 服务器         |
 | 内置浏览器            | `electron/browser/`                                                                                                        | `browser-ipc.ts`                                             | `workspace/BrowserContent.tsx`                       | 浏览器             |
@@ -198,6 +199,8 @@ Electron 主进程 (electron/)
 | 关于 / 开源许可       | `electron/third-party-notices.ts`、`electron/main.ts`（菜单）                                                              | `misc-ipc.ts`（`pi:showAbout` / `pi:openThirdPartyNotices`） | `common/TitleMenuBar.tsx`                            | —                  |
 | 文件与外部应用        | `electron/project-path.ts`、`electron/external-apps.ts`                                                                    | `misc-ipc.ts`                                                | `components/code/**`                                 | —                  |
 | 注入模型的自定义工具  | `electron/tools/`                                                                                                          | —（随会话注入）                                              | 各面板                                               | —                  |
+
+> 记忆 / 子 agent / 后台任务三个面板都在**右侧工作区**里（聊天头部对应按钮打开对应标签，记忆按钮还带待审核候选角标）；关掉最后一个标签时右侧面板自动收起。
 
 ## 设置页结构与新增配置项
 
@@ -241,6 +244,7 @@ Electron 主进程 (electron/)
 ### 样式
 
 - 用 Tailwind class，颜色用 `od-*` 色板（`text-od-text-bright`、`bg-od-bg-alt` 等），不要硬编码 hex
+- **折叠区块统一用 `src/components/common/Disclosure.tsx`**（收起 `chevronRight` / 展开 `chevronDown`）：面板类 UI 禁止直接用原生 `<details>`——各平台/浏览器画出的三角标记（`▶`/`⌄`）样式不一，且不在 FontAwesome 图标体系里。该组件的标题也做了宽度保护（标题 `max-w-[60%]`、右侧元信息 `truncate`），窄面板下不会把标题挤没
 - **禁用任意值固定字号类名**（如 `text-[10px]`、`text-[11px]`）：设置页提供全局字号调节（改写 `html { font-size }`，rem 基准），固定 px 字号不随设置缩放，会导致 UI 尺度不一致。一律用 Tailwind 字号阶梯（`text-xs`、`text-sm` 等，均为 rem 单位）；确需更小字号时用 `text-[0.7rem]` 这类 rem 任意值
 - 弹窗避开 macOS 标题栏（38px）/其他平台（32px）：`fixed inset-0` 容器加 `paddingTop` + `flex flex-col`，子元素 `flex-1 min-h-0`。**这不只是视觉约定**：标题栏是 40px 的 `-webkit-app-region: drag` 区，落在带内的可点控件会被吞掉点击、光标也不显示小手（详见「重要注意事项」末条）
 
@@ -327,9 +331,14 @@ Electron 主进程 (electron/)
 - **新增 IPC 必须三处同步**：`pi-bridge.ts` handler + `preload.ts` 暴露 + `pi.d.ts` 类型
 - **git-ai 是可选的外部依赖，路径解析禁用 `process.env.HOME`**：`electron/git-ai/extension.ts` 经 `resolveGitAiBin()`（`electron/git-ai/paths.ts`）按 设置页 `binPath` → `PI_DESKTOP_GIT_AI_BIN` → `os.homedir()/.git-ai/bin/git-ai(.exe)` → PATH 的顺序解析。Windows GUI 进程没有 `HOME` 环境变量（只有 `USERPROFILE`），用 `process.env.HOME` 会拼出 `undefined/.git-ai/bin/git-ai` 并静默 ENOENT（`docs/report.md` 记录过这个线上问题）。只有「本应可用」时（配置/环境变量显式指定，或默认安装位置存在）才 `console.warn` 一次，避免没装 git-ai 的用户被刷屏。扩展每次事件读一次 `~/.pi-desktop/git-ai.json`，所以设置页改动即时生效。回归测试：`tests/git-ai/*`
 - **内置网络搜索全是免 Key 源，改 provider 前先看实测结论**：`electron/web-search/providers.ts` 里的 5 个源（Parallel 免 Key MCP / Bing / Brave / 360 / 自建 SearXNG）是 2026-10 实测可用的；DuckDuckGo（202 + anomaly-modal）、Mojeek（验证码）、Google（结果页纯 JS 渲染）、SearXNG 公共实例（全部关 `format=json`）、Ecosia/Startpage/Yahoo/Sogou（403/超时/500）都不可用，Firecrawl keyless 与 Exa 免 Key MCP 共享 IP 额度经常 429 —— 不要重新加回去。抓 HTML 的三个源是**网页抓取**（无官方免费 API），解析器必须是纯函数并被 `tests/web-search/providers.test.ts` 的 fixture 覆盖；结构一变只会静默返回 0 条，所以 `runWebSearch` 把「空结果」当失败继续降级。开关走 `~/.pi-desktop/web-search.json` 的 `enabled`，`PiBridge.syncWebSearchTool` 用 `setActiveToolsByName` 注入/移除（关闭后模型看不到该工具），设置页保存后经 `applyWebSearchConfig()` 同步所有槽；`web_search` 已加入 `permission/policy.ts` 的 `SAFE_TOOL_NAMES`（只读，仅向外发查询词）
+- **内置浏览器是原生 `WebContentsView`，HTML 浮层盖不住它**：视图永远画在所有 DOM 之上，所以 App 的弹窗要能看见，只能把视图收起来。判定在 `src/components/workspace/BrowserContent.tsx`：只在与面板矩形**几何相交**、且**真的绘制内容**（非透明背景，或有边框/阴影/文字/绘制子元素，见 `src/lib/overlay-geometry.ts`）的 `.fixed` 浮层出现时才收起——`pointer-events-none` 的壳（`ToastHost` 外壳、拖拽区）与透明点击遮罩一律忽略，否则左侧栏开个下拉就把右侧浏览器整块弄空。收起前先 `pi:browser:capture` 截一张静态底图垫在面板里（原生视图不能叠层，只能「拍下来再藏」），所以弹窗打开期间看到的是冻结画面而不是空白。`setVisible(false)` 只在组件卸载时调，**不要放进可见性 effect 的 cleanup**（换网址/浮层开关会先收再显，画面闪空）
+- **空图片（`data: ""`）会让整轮请求 400，而且坏数据永久留在会话历史里**：内置浏览器 `screenshot` 在视图未绘制（浏览器面板不可见 / 窗口最小化）时 `capturePage()` 返回空 NativeImage，`toPNG().toString('base64')` 得到 `""`；pi-ai 的转换器（openai-completions / anthropic-messages / google …）不校验 `data` 是否为空，直接拼成 `data:image/png;base64,`，上游网关解码失败 → `400 invalid base64 image_url`，并且这张图留在历史里，**之后每轮请求都会重发**（完整证据链见 `docs/report2.md`）。三道防线：① 数据源不再产出空图片（`electron/browser/controller.ts` 的 `captureFrame` 对空图与抛错都重试一次、`screenshot` 仍失败则抛中文错（`describeCaptureError` 把 Chromium 的 `CopyFromSurfaceError` 枚举名——`UnknownVizError` / `Timeout` / `Frame Gone` / `Current display surface not available for capture` 等，Electron 直接当 rejection message 抛出——翻成可行动提示）、`electron/mcp/manager.ts` 的 `callTool` 丢弃非法图片并补一条文本说明、`electron/tools/read-img-tool.ts` 拒绝空文件）；② `electron/media/image-guard.ts` 的 `installImageGuard`（在 `PiBridge.bindSessionExtensions` 里安装，建槽/换会话/`session.reload()` 覆盖到）清掉内存 transcript 里的非法图片并包装 `agent.convertToLlm`，**用旧会话继续聊也能自愈**；③ `pi:navigateTree` 把历史重建回来后再清一次。守卫依赖 pi-agent-core 的公开形状（`Agent.messages` 可写、`Agent.convertToLlm` 可重指），升级 SDK 后跑 `tests/media/image-guard.test.ts` + `tests/session/pi-bridge.test.ts` 的对应用例确认没失灵
 - **默认关闭的能力**：内置浏览器 `browserEnabled`、DevTools 捕获 `browserDevtoolsEnabled`（含任意 JS 执行与 CDP 抓包）、日志 `logConfig.enabled` 默认关；记忆、git-ai、通知默认开（通知默认仅失焦）。改默认值要同步 README 与设置页文案
+- **标题栏 / 左侧会话栏 / 底部状态栏是「不铺底色的透玻璃区」**：它们在 macOS 透出 `vibrancy: under-window`、Windows 透出 acrylic，所以 `src/App.tsx` 的标题栏、`src/components/session/SessionSidebar.tsx`、`src/components/Footer.tsx` 都**不能自己加背景色**（局部底色会盖住根容器，让开关失效）。设置页「界面」tab 的 `translucentPanels`（ui-config.json，默认开）关闭时，由 `src/App.tsx` 根容器统一铺 `bg-od-bg`，三处一并变不透明；**只改渲染层，`electron/main.ts` 的 `vibrancy` / `backgroundMaterial` 不随它变化**。新增「透出原生材质」的区域同样只留透明、交给根容器。
 - **`electron/sandbox-extension.ts` 是占位实现**，未接入 `pi-bridge.ts`，不要以为沙箱已经生效
 - **统计扫描跑在 worker 线程**：`electron/statistics/usage-worker.ts` 是 `vite.config.ts` 里的额外构建入口，增删主进程入口时要同步 `vite.config.ts` 与打包 `files`/`asarUnpack`
 - **SDK 补丁由 postinstall 施加**：`scripts/patch-pi-loader.js` 会改写 `node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/loader.js`（幂等，写入 marker 注释）。升级 SDK 或重新 `npm install` 后会自动重打；若手工动过 SDK 文件或怀疑补丁丢失，重跑 `node scripts/patch-pi-loader.js`
+- **`before_agent_start` 自 SDK 1.2.0 起是 user | custom 联合事件**：除了用户提交的 prompt，`pi.sendMessage(..., { triggerTurn: true })` 在 idle 时起的 custom run 也会触发它，但 `custom` 事件**没有 `prompt`**、只有起始的 `message`（`content` 可能是字符串）。两个自注册 handler 必须先判 `event.messageType === 'user'` 再读 `event.prompt`：`electron/goal/extension.ts` 对 custom run 用 `''` 兜底（不算自己的续跑，按 manual 记账），`electron/hooks/extension.ts` 用自定义消息文本兜底并把 `messageType` 透传给钩子脚本。同一版本还改了忙闲语义：**run 启动期间（含 `before_agent_start` 内）会话就算 busy**——`ctx.isIdle()` 为 false、`pi.sendUserMessage()` 必须带 `deliverAs`（否则抛 `Agent is already processing`）、`pi.sendMessage()` 则排队进这次启动的 run。
+- **`pointer-events` 是会被继承的「命中测试开关」，父级 `none` 时子级必须显式写 `auto`**：聊天区会覆盖在滚动内容之上的浮层（如 `src/components/chat/BookmarkRail.tsx` 的书签栏）为了不挡住聊天区的滚轮/点选，外层容器一律 `pointer-events-none`；此时**真正的可交互元素（每个书签）必须自己声明 `pointer-events-auto`**，只给中间的滚动容器按需切换是不够的（`9a6c205` 就这么把书签的 hover/点击弄成了静默失效——父级 none 时整棵子树都收不到指针事件，不报错、光标也不变）
 - **文档同步**：新增用户可见功能时同步 `README.md` 的功能特性与本文件的「功能模块地图」；新增设置项时同步「设置页结构与新增配置项」
 - Electron renderer 禁用 nodeIntegration，所有 Node 能力经 IPC 暴露，不要在 renderer 里 `require`

@@ -3,6 +3,7 @@ import {
   WebContentsView,
   session as electronSession,
   shell,
+  type NativeImage,
   type Rectangle
 } from 'electron';
 import { randomUUID } from 'crypto';
@@ -29,6 +30,8 @@ const BROWSER_PARTITION = 'persist:pi-browser';
 const MAX_SNAPSHOT_TEXT = 30_000;
 const MAX_SNAPSHOT_ELEMENTS = 200;
 
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 export function normalizeBrowserTabId(tabId: string): string {
   return tabId.startsWith('browser:') ? tabId.slice('browser:'.length) : tabId;
 }
@@ -41,6 +44,66 @@ interface BrowserTab {
   loading: boolean;
   error?: string;
   snapshotRefs: Set<string>;
+}
+
+/** 截图失败后的重试间隔：隔一帧多一点的等待，足以让刚显隐/刚提交首帧的视图重新可回读 */
+const CAPTURE_RETRY_DELAY_MS = 150;
+
+/** 截图失败时的通用建议（这些错误都是模型能自救的，给可执行的下一步而不是英文枚举名） */
+const CAPTURE_RETRY_HINT = '可稍后重试；只需要页面文本/结构时改用 snapshot';
+
+/**
+ * 把 `capturePage()` 的失败翻译成可行动的中文提示。
+ *
+ * Electron 直接把 Chromium 的 `content::CopyFromSurfaceError` 枚举名当 rejection message
+ * （shell/browser/api/electron_api_web_contents.cc 的 `CopyFromSurfaceErrorToString`），
+ * 还有一条 `Current display surface not available for capture` 来自
+ * `IsSurfaceAvailableForCopy()` 为假。它们本质都是「合成器这一瞬间交不出画面」，
+ * 所以只翻译成中文可行动提示，不把英文枚举名裸给模型。
+ */
+function describeCaptureError(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  if (/Current display surface not available/i.test(raw)) {
+    return `浏览器画面暂不可抓：该标签的视图还没合成过画面（未真正显示过，或页面仍在加载）。先切到该标签、等页面加载完再试；${CAPTURE_RETRY_HINT}`;
+  }
+  if (/UnknownVizError|^Unknown$|Not implemented/i.test(raw)) {
+    return `浏览器截图失败：合成器回读画面失败（${raw}，常见于 GPU 进程重启、窗口最小化或被完全遮挡、面板尺寸为 0）。请让窗口在前台并确认右侧浏览器面板可见；${CAPTURE_RETRY_HINT}`;
+  }
+  if (/Timeout/i.test(raw)) {
+    return `浏览器截图超时：合成器没在限定时间内交出画面（通常是窗口被遮挡或 GPU 忙）。请让窗口在前台；${CAPTURE_RETRY_HINT}`;
+  }
+  if (/Frame Gone|EmbeddingTokenChanged/i.test(raw)) {
+    return `浏览器截图失败：抓取期间页面换掉了渲染表面（导航、渲染进程重建）。等页面稳定后再试；${CAPTURE_RETRY_HINT}`;
+  }
+  if (/VizSentEmptyBitmap/i.test(raw)) {
+    return `浏览器画面为空：合成器交出的是空位图（通常是窗口未激活或被最小化）。请让窗口在前台、面板可见后再试；${CAPTURE_RETRY_HINT}`;
+  }
+  return `浏览器截图失败（${raw}）；${CAPTURE_RETRY_HINT}`;
+}
+
+/**
+ * 抓一帧画面，空图与抛错都重试一次。
+ *
+ * `capturePage()` 有三种失败形态，前两种都要等「下一拍」才能好：
+ * 1. resolve 一张空 NativeImage（视图未绘制 / 刚隐藏）
+ * 2. reject（`UnknownVizError` / `Timeout` / `Frame Gone` / 空位图 …）
+ * 3. reject `Current display surface not available for capture`（真正的「没显示过」）
+ *
+ * 返回 `{ image }` 或 `{ error }`（两次都空图时两者皆无，调用方按空图处理）。
+ */
+async function captureFrame(tab: BrowserTab): Promise<{ image?: NativeImage; error?: unknown }> {
+  let thrown: unknown;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const image = await tab.view.webContents.capturePage();
+      if (!image.isEmpty()) return { image };
+      thrown = undefined;
+    } catch (error) {
+      thrown = error;
+    }
+    if (attempt === 0) await delay(CAPTURE_RETRY_DELAY_MS);
+  }
+  return thrown === undefined ? {} : { error: thrown };
 }
 
 export class BrowserController {
@@ -246,9 +309,11 @@ export class BrowserController {
   async captureActiveTab(): Promise<string | null> {
     const tab = this.getActiveTab();
     if (!tab) return null;
+    // 静态底图是尽力而为：连重试都拿不到就保持空白，不打断「收起视图」这件事
+    const { image } = await captureFrame(tab);
+    if (!image) return null;
     try {
-      const image = await tab.view.webContents.capturePage();
-      return image.isEmpty() ? null : image.toDataURL();
+      return image.toDataURL();
     } catch {
       return null;
     }
@@ -287,10 +352,27 @@ export class BrowserController {
 
   async screenshot(tabId?: string): Promise<{ data: string; mimeType: string }> {
     const tab = this.resolveTab(tabId);
-    let image = await tab.view.webContents.capturePage();
+    // 空图与抛错都重试一次：视图刚从隐藏转可见 / 页面还在首帧合成 / GPU 回读抖动
+    const { image: captured, error } = await captureFrame(tab);
+    if (!captured) {
+      if (error) throw new Error(describeCaptureError(error));
+      // 空图绝不能返回：base64 是 '' 时会被 pi-ai 拼成 `data:image/png;base64,`，
+      // 上游网关解码失败后整轮 400，而且这张坏图会留在会话历史里反复触发（见 docs/report2.md）。
+      throw new Error(
+        '浏览器画面为空（窗口未激活/最小化，或浏览器面板当前不可见），未能截图。' +
+          '请先打开右侧浏览器面板并让窗口在前台后重试，或改用 snapshot 读取页面文本'
+      );
+    }
+    let image = captured;
     const size = image.getSize();
     if (size.width > 1600) image = image.resize({ width: 1600, quality: 'good' });
-    return { data: image.toPNG().toString('base64'), mimeType: 'image/png' };
+    const data = image.toPNG().toString('base64');
+    if (data.length === 0) {
+      throw new Error(
+        '浏览器截图编码结果为空，已放弃返回图片；请让窗口在前台后重试，或改用 snapshot'
+      );
+    }
+    return { data, mimeType: 'image/png' };
   }
 
   async click(tabId: string | undefined, ref: string): Promise<void> {

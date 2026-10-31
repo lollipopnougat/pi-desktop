@@ -4,7 +4,8 @@ import Switch from '../common/Switch';
 import Dropdown from '../common/Dropdown';
 import { t } from '../../i18n/zh';
 import { MemoryEditModal, MemoryFileRow } from '../memory/MemoryFileCard';
-import type { MemoryConfig, MemoryFileStat, MemoryFileId } from '../../types/pi';
+import { usePiStore } from '../../store/pi-store';
+import type { MemoryConfig, MemoryFileStat, MemoryFileId, MemoryIndexStats } from '../../types/pi';
 
 /**
  * 设置页 - 记忆系统 tab：
@@ -26,8 +27,11 @@ const FILE_LABELS: Record<FixedFileId, string> = {
 };
 
 export default function MemoryTab() {
+  const showToast = usePiStore((state) => state.showToast);
   const [config, setConfig] = useState<MemoryConfig | null>(null);
   const [stats, setStats] = useState<MemoryFileStat[]>([]);
+  const [index, setIndex] = useState<MemoryIndexStats | null>(null);
+  const [rebuilding, setRebuilding] = useState(false);
   const [models, setModels] = useState<any[]>([]);
   /** 弹窗编辑中：{ fileId, label } */
   const [editing, setEditing] = useState<{ fileId: MemoryFileId; label: string } | null>(null);
@@ -74,11 +78,43 @@ export default function MemoryTab() {
     } catch {}
   };
 
+  const patchConfig = async (patch: Partial<MemoryConfig>) => {
+    try {
+      setConfig(await window.pi.memory.setConfig(patch));
+    } catch (e) {
+      showToast(t.memory.autoSaveFailed((e as Error)?.message || ''), { variant: 'error' });
+    }
+  };
+
+  /** 数值阈值：夹到 1..200 再落盘（空串回退默认） */
+  const changeNudge = async (
+    field: 'nudgeTurns' | 'nudgeToolCalls',
+    raw: string,
+    fallback: number
+  ) => {
+    const n = raw === '' ? fallback : Math.floor(Number(raw));
+    if (!Number.isFinite(n) || n < 1) return;
+    await patchConfig({ [field]: Math.min(200, n) } as Partial<MemoryConfig>);
+  };
+
   const refreshStats = async () => {
     try {
       const status = await window.pi.memory.getStatus();
       setStats(status.files || []);
+      setIndex(status.index || null);
     } catch {}
+  };
+
+  const rebuildIndex = async () => {
+    setRebuilding(true);
+    try {
+      setIndex(await window.pi.memory.reindex());
+      showToast(t.memory.indexRebuilt, { variant: 'success' });
+    } catch (e) {
+      showToast(t.memory.indexRebuildFailed((e as Error)?.message || ''), { variant: 'error' });
+    } finally {
+      setRebuilding(false);
+    }
   };
 
   const openDir = async () => {
@@ -177,6 +213,145 @@ export default function MemoryTab() {
             >
               <Icon name="memory" className="mr-1 inline w-3" />
               {t.memory.openDir}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 自动沉淀 */}
+      <div className="mb-4">
+        <div className="mb-2">
+          <h3 className="text-xs font-semibold text-od-text">{t.memory.autoSection}</h3>
+          <div className="text-xs text-od-text-dim">{t.memory.autoSectionDesc}</div>
+        </div>
+        <div className="space-y-2 rounded border border-od-border bg-od-bg-alt px-3 py-2.5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-sm text-od-text-bright">{t.memory.autoExtractLabel}</div>
+              <div className="text-xs text-od-text-dim">{t.memory.autoExtractDesc}</div>
+            </div>
+            <Switch
+              checked={config?.autoExtract ?? true}
+              onChange={(v) => patchConfig({ autoExtract: v })}
+              ariaLabel={t.memory.autoExtractLabel}
+              disabled={!enabled}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-sm text-od-text-bright">{t.memory.nudgeTurnsLabel}</div>
+              <div className="text-xs text-od-text-dim">{t.memory.nudgeTurnsDesc}</div>
+            </div>
+            <input
+              type="number"
+              min={1}
+              max={200}
+              value={config?.nudgeTurns ?? 12}
+              onChange={(e) => changeNudge('nudgeTurns', e.target.value, 12)}
+              disabled={!enabled || !(config?.autoExtract ?? true)}
+              aria-label={t.memory.nudgeTurnsLabel}
+              className="w-24 shrink-0 rounded border border-od-border-light bg-od-bg-alt px-2 py-1 text-xs text-od-text-bright disabled:opacity-50 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-sm text-od-text-bright">{t.memory.nudgeToolCallsLabel}</div>
+              <div className="text-xs text-od-text-dim">{t.memory.nudgeToolCallsDesc}</div>
+            </div>
+            <input
+              type="number"
+              min={1}
+              max={200}
+              value={config?.nudgeToolCalls ?? 20}
+              onChange={(e) => changeNudge('nudgeToolCalls', e.target.value, 20)}
+              disabled={!enabled || !(config?.autoExtract ?? true)}
+              aria-label={t.memory.nudgeToolCallsLabel}
+              className="w-24 shrink-0 rounded border border-od-border-light bg-od-bg-alt px-2 py-1 text-xs text-od-text-bright disabled:opacity-50 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-sm text-od-text-bright">{t.memory.correctionLabel}</div>
+              <div className="text-xs text-od-text-dim">{t.memory.correctionDesc}</div>
+            </div>
+            <Switch
+              checked={config?.correctionDetect ?? true}
+              onChange={(v) => patchConfig({ correctionDetect: v })}
+              ariaLabel={t.memory.correctionLabel}
+              disabled={!enabled}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-sm text-od-text-bright">{t.memory.preCompactLabel}</div>
+              <div className="text-xs text-od-text-dim">{t.memory.preCompactDesc}</div>
+            </div>
+            <Switch
+              checked={config?.preCompactFlush ?? true}
+              onChange={(v) => patchConfig({ preCompactFlush: v })}
+              ariaLabel={t.memory.preCompactLabel}
+              disabled={!enabled}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* 检索索引（FTS5） */}
+      <div className="mb-4">
+        <div className="mb-2">
+          <h3 className="text-xs font-semibold text-od-text">{t.memory.indexSection}</h3>
+          <div className="text-xs text-od-text-dim">{t.memory.indexDesc}</div>
+        </div>
+        <div className="space-y-2 rounded border border-od-border bg-od-bg-alt px-3 py-2.5">
+          {index?.available ? (
+            <>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm text-od-text">{t.memory.indexEntries}</span>
+                <span className="shrink-0 text-xs text-od-text-dim">
+                  {index.entries} · {t.memory.indexFiles(index.files)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm text-od-text">{t.memory.indexSessions}</span>
+                <span className="shrink-0 text-xs text-od-text-dim">
+                  {index.sessions?.available
+                    ? t.memory.indexSessionsValue(index.sessions.entries, index.sessions.files)
+                    : t.memory.indexNever}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm text-od-text">{t.memory.indexSize}</span>
+                <span className="shrink-0 text-xs text-od-text-dim">
+                  {(index.bytes / 1024 / 1024).toFixed(2)} MB
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm text-od-text">
+                  {t.memory.indexUsage(index.usageEntries)}
+                </span>
+                <span className="shrink-0 text-xs text-od-text-dim">
+                  {index.indexedAt
+                    ? t.memory.indexUpdated(new Date(index.indexedAt).toLocaleString())
+                    : t.memory.indexNever}
+                </span>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-start gap-1.5 text-xs text-od-text-dim">
+              <Icon name="info" className="mt-0.5 w-3 shrink-0" />
+              <span>
+                {index?.error ? t.memory.indexUnavailable(index.error) : t.memory.indexNever}
+              </span>
+            </div>
+          )}
+          <div className="flex items-center justify-end">
+            <button
+              onClick={rebuildIndex}
+              disabled={rebuilding || !enabled}
+              className="shrink-0 rounded border border-od-border-light px-2 py-1 text-xs text-od-text transition-colors hover:bg-od-bg-hover disabled:opacity-50"
+            >
+              <Icon name="spinner" spin={rebuilding} className="mr-1 inline w-3" />
+              {rebuilding ? t.memory.indexRebuilding : t.memory.indexRebuild}
             </button>
           </div>
         </div>

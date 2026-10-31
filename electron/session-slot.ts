@@ -1,5 +1,6 @@
 import type { SessionIdentity } from '../src/types/session';
 import { SessionAccess } from './session-access';
+import type { QueuedMessage } from './queued-messages';
 
 /** agent 流式增量的合帧窗口（ms）：约 33 帧/秒，肉眼已无区别，IPC 体积降一个量级 */
 const EVENT_FLUSH_MS = 30;
@@ -104,6 +105,12 @@ export class SessionSlot {
   readonly pendingPrompts: Array<{ text: string; options?: any }> = [];
   /** 该槽的 SDK 事件订阅解绑函数（每槽独立：切焦点不解绑，只有释放槽才解绑） */
   unsubscribe: (() => void) | null = null;
+  /**
+   * 排队消息镜像（文本 + 图片）。
+   * SDK 的 clearQueue() / queue_update 只回文本，图片取不回来（见 electron/queued-messages.ts
+   * 顶部说明），所以图片必须在这里记一份，队列编辑按它重建。
+   */
+  queuedMessages: QueuedMessage[] = [];
   /** 未推送的 message_update 增量（只保留最新一条，见 queueMessageUpdate） */
   private pendingUpdate: { event: any; identity: SessionIdentity } | null = null;
   private updateFlushTimer: ReturnType<typeof setTimeout> | null = null;

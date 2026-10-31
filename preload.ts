@@ -11,11 +11,13 @@ const HOME_DIR = os.homedir();
 const piAPI = {
   // === Prompting ===
   prompt: (text: string, opts?: any) => ipcRenderer.invoke('pi:prompt', text, opts),
-  steer: (text: string) => ipcRenderer.invoke('pi:steer', text),
-  followUp: (text: string) => ipcRenderer.invoke('pi:followUp', text),
+  steer: (text: string, opts?: { images?: unknown[] }) =>
+    ipcRenderer.invoke('pi:steer', text, opts),
+  followUp: (text: string, opts?: { images?: unknown[] }) =>
+    ipcRenderer.invoke('pi:followUp', text, opts),
   abort: (sessionKey?: string | null) => ipcRenderer.invoke('pi:abort', sessionKey),
   clearQueue: () => ipcRenderer.invoke('pi:clearQueue'),
-  /** 撤回单条排队消息到聊天框（clearQueue + 其余重新入队） */
+  /** 撤回单条排队消息到聊天框（clearQueue + 其余重新入队），随消息把图片一起还回 */
   revokeQueuedMessage: (kind: 'steering' | 'followUp', index: number) =>
     ipcRenderer.invoke('pi:revokeQueuedMessage', kind, index),
   /** 删除单条排队消息（只删这一条，不是清空队列） */
@@ -505,6 +507,9 @@ const piAPI = {
       ipcRenderer.invoke('pi:memory:migrateLegacy', name, projectId),
     readEntry: (id: string) => ipcRenderer.invoke('pi:memory:readEntry', id),
     search: (query: string) => ipcRenderer.invoke('pi:memory:search', query),
+    pendingReviews: () => ipcRenderer.invoke('pi:memory:pendingReviews'),
+    indexStatus: () => ipcRenderer.invoke('pi:memory:indexStatus'),
+    reindex: () => ipcRenderer.invoke('pi:memory:reindex'),
     readExtraction: (fileName: string) => ipcRenderer.invoke('pi:memory:readExtraction', fileName)
   },
   onMemoryProgress: (cb: (progress: any) => void) => {

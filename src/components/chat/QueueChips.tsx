@@ -26,9 +26,12 @@ type QueueKind = 'steering' | 'followUp';
 interface QueueChipsProps {
   steering: string[];
   followUp: string[];
-  /** ✏ 撤回：把该条文本放回输入框（由父组件负责 setText + 聚焦） */
-  onRevokeText: (text: string) => void;
+  /** ✏ 撤回：把该条文本（及随消息发出的图片）放回输入框，由父组件负责 setText/附件/聚焦 */
+  onRevokeText: (text: string, images?: QueuedImage[]) => void;
 }
+
+/** 排队消息携带的图片（结构等同 pi-ai 的 ImageContent，只用于撤回时回填，不在这里渲染） */
+type QueuedImage = { type: 'image'; data: string; mimeType: string };
 
 interface DragState {
   kind: QueueKind;
@@ -246,7 +249,7 @@ export default function QueueChips({ steering, followUp, onRevokeText }: QueueCh
                   <button
                     onClick={async () => {
                       const r = await window.pi.revokeQueuedMessage(kind, i);
-                      if (r?.revoked) onRevokeText(r.revoked);
+                      if (r?.revoked) onRevokeText(r.revoked, r.images);
                     }}
                     className="shrink-0 opacity-70 hover:opacity-100"
                     title={t.editQueuedMsg}

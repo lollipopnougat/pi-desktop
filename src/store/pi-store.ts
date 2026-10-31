@@ -17,6 +17,7 @@ import {
   resolveShortcutMap,
   type ShortcutMap
 } from '../lib/shortcuts';
+import type { SettingsTabKey } from '../components/settings/settings-nav';
 import {
   DEFAULT_COLOR_MODE,
   DEFAULT_THEME_FAMILY,
@@ -330,7 +331,13 @@ export interface PiState {
   setStopRunningConfirm: (
     v: { title: string; message: string; confirmText: string } | null
   ) => void;
+  /** 待审核记忆候选数（记忆按钮角标；由 refreshMemoryPendingReviews 刷新） */
+  memoryPendingReviews: number;
+  refreshMemoryPendingReviews: () => Promise<void>;
   settingsOpen: boolean;
+  /** 打开设置页时要定位的 tab（深链；消费后由 SettingsPage 清空，不持久化） */
+  settingsTab: SettingsTabKey | null;
+  setSettingsTab: (v: SettingsTabKey | null) => void;
   sidebarOpen: boolean;
   /** 会话树全屏面板打开（标题栏按钮隐藏用） */
   treeViewOpen: boolean;
@@ -347,6 +354,8 @@ export interface PiState {
   colorMode: ColorMode;
   fontSize: number;
   uiFontFamily: string;
+  /** 毛玻璃半透明：标题栏/侧栏/状态栏透出窗口原生材质（false = 铺不透明底色） */
+  translucentPanels: boolean;
   sidebarWidth: number;
   rightPanelWidth: number;
   browserEnabled: boolean;
@@ -417,8 +426,6 @@ export interface PiState {
   backgroundTaskSnapshot: BackgroundTaskSnapshotList | null;
   setBackgroundTaskSnapshot: (s: BackgroundTaskSnapshotList | null) => void;
   // Subagent 进度面板开关
-  subagentPanelOpen: boolean;
-  setSubagentPanelOpen: (v: boolean) => void;
   // Goal 编辑弹窗
   goalEditDialogOpen: boolean;
   setGoalEditDialogOpen: (v: boolean) => void;
@@ -459,6 +466,8 @@ export interface PiState {
   setTreeViewOpen: (v: boolean) => void;
   setThemeFamily: (id: string) => void;
   setColorMode: (m: ColorMode) => void;
+  /** 毛玻璃半透明开关（持久化到 ui-config.json，仅影响渲染层，不改窗口材质） */
+  setTranslucentPanels: (v: boolean) => void;
   bumpSessionVersion: () => void;
   bumpGitBranchVersion: () => void;
   setFontSize: (n: number) => void;
@@ -625,6 +634,7 @@ export interface UiSettings {
   colorMode?: ColorMode;
   fontSize?: number;
   uiFontFamily?: string;
+  translucentPanels?: boolean;
   sidebarWidth?: number;
   /** 旧字段，仅用于迁移 */
   codePanelWidth?: number;
@@ -751,6 +761,8 @@ export function normalizeUiSettings(ui: UiSettings): Partial<UiSettings> {
     if (field === 'fileTreeWidth' && typeof value === 'number' && Number.isFinite(value)) {
       patch.fileTreeWidth = Math.max(80, value);
     }
+    if (field === 'translucentPanels' && typeof value === 'boolean')
+      patch.translucentPanels = value;
     if (field === 'showBookmarks' && typeof value === 'boolean') patch.showBookmarks = value;
     if (field === 'showThinkingBlocks' && typeof value === 'boolean')
       patch.showThinkingBlocks = value;
@@ -840,7 +852,9 @@ const initialState = {
   activeTab: null,
   pendingFile: null,
   stopRunningConfirm: null,
+  memoryPendingReviews: 0,
   settingsOpen: false,
+  settingsTab: null,
   sidebarOpen: true,
   treeViewOpen: false,
   sessionVersion: 0,
@@ -855,6 +869,8 @@ const initialPreferences = {
   colorMode: DEFAULT_COLOR_MODE,
   fontSize: FONT_SIZE_DEFAULT,
   uiFontFamily: UI_FONT_FAMILY_DEFAULT,
+  // 默认保留毛玻璃：标题栏/侧栏/状态栏不铺底色，露出窗口原生材质
+  translucentPanels: true,
   sidebarWidth: SIDEBAR_WIDTH_DEFAULT,
   rightPanelWidth: RIGHT_PANEL_WIDTH_DEFAULT,
   browserEnabled: false,
@@ -905,7 +921,6 @@ const initialPreferences = {
   mcpStatusOpen: false,
   goalSnapshot: null,
   subagentSnapshot: null,
-  subagentPanelOpen: false,
   goalEditDialogOpen: false,
   planPhase: 'idle' as PlanPhase,
   planPendingProposal: null,
@@ -1041,7 +1056,18 @@ export const usePiStore = create<PiState>((set, get) => ({
   setActiveTab: (id) => set({ activeTab: id }),
   setPendingFile: (f) => set({ pendingFile: f }),
   setStopRunningConfirm: (v) => set({ stopRunningConfirm: v }),
+  refreshMemoryPendingReviews: async () => {
+    try {
+      const count = await window.pi.memory.pendingReviews();
+      if (typeof count === 'number' && count !== get().memoryPendingReviews) {
+        set({ memoryPendingReviews: count });
+      }
+    } catch {
+      /* 记忆关闭或主进程忙：保持旧值 */
+    }
+  },
   setSettingsOpen: (v) => set({ settingsOpen: v }),
+  setSettingsTab: (v) => set({ settingsTab: v }),
   setSidebarOpen: (v) => set({ sidebarOpen: v }),
   setTreeViewOpen: (v: boolean) => set({ treeViewOpen: v }),
   setThemeFamily: (id: string) => {
@@ -1055,6 +1081,10 @@ export const usePiStore = create<PiState>((set, get) => ({
     saveSetting('colorMode', m);
     applyTheme(get().themeFamily, m);
     set({ colorMode: m });
+  },
+  setTranslucentPanels: (v: boolean) => {
+    saveSetting('translucentPanels', v);
+    set({ translucentPanels: v });
   },
   // 会话列表 / 标题 / 会话树的刷新走共享去抖：一次 run 结算只刷一次，
   // 而不是侧栏、标题栏、会话树各拉一次 IPC、各自重渲染
@@ -1241,7 +1271,6 @@ export const usePiStore = create<PiState>((set, get) => ({
   setGoalSnapshot: (s) => set({ goalSnapshot: s }),
   setSubagentSnapshot: (s) => set({ subagentSnapshot: s }),
   setBackgroundTaskSnapshot: (s) => set({ backgroundTaskSnapshot: s }),
-  setSubagentPanelOpen: (v) => set({ subagentPanelOpen: v }),
   setGoalEditDialogOpen: (v) => set({ goalEditDialogOpen: v }),
   setPlanSnapshot: (s) =>
     set({

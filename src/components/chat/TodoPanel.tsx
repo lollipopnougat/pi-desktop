@@ -30,6 +30,16 @@ const statusColor = (s: TodoStatus): string => {
   }
 };
 
+/**
+ * 图标槽：高度对齐文本首行行高，内部居中放图标。
+ *
+ * 用 `text-xs leading-relaxed` + `h-[1.625em]`，即高度 = 12px × 1.625 = 19.5px，
+ * 与右侧标题的 line-height 完全一致；行是 items-start，槽顶与文本首行顶齐平，
+ * 槽内 items-center ⇒ 图标中心 = 文本首行中心。（不写死 px：字号改了自动跟随）
+ */
+const ICON_SLOT =
+  'flex h-[1.625em] w-2.5 shrink-0 items-center justify-center text-xs leading-relaxed';
+
 const itemOpacity = (s: TodoStatus): string => {
   switch (s) {
     case 'completed':
@@ -125,14 +135,19 @@ export default function TodoPanel({ open, onClose }: TodoPanelProps) {
                     (task: { id: string; content: string; status: TodoStatus }, ti: number) => (
                       <div
                         key={task.id}
-                        className={`flex items-start gap-2 px-1 py-0.5 rounded transition-colors hover:bg-od-bg-hover/50 group ${itemOpacity(task.status)}`}
+                        className={`flex items-start gap-2 px-1 py-1.5 rounded transition-colors hover:bg-od-bg-hover/50 group ${itemOpacity(task.status)}`}
                       >
-                        <span className={`mt-0.5 shrink-0 ${statusColor(task.status)}`}>
-                          <Icon
-                            name={statusIcon(task.status)}
-                            spin={task.status === 'in_progress'}
-                            className="w-2.5"
-                          />
+                        <span aria-hidden className={`${ICON_SLOT} ${statusColor(task.status)}`}>
+                          {/* 正方形图标框：旋转时绕自身中心转；
+                              overflow-hidden 把旋转栅格化多出来的 0.5px 抗锯齿边缘裁掉，
+                              使进行中的圆环与圆点外框完全同尺寸 */}
+                          <span className="flex h-2.5 w-2.5 items-center justify-center overflow-hidden">
+                            <Icon
+                              name={statusIcon(task.status)}
+                              spin={task.status === 'in_progress'}
+                              className="h-2.5 w-2.5"
+                            />
+                          </span>
                         </span>
                         <span
                           className={`text-xs flex-1 leading-relaxed ${

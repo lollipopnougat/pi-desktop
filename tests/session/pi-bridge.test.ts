@@ -62,9 +62,15 @@ function deferred() {
 function makeRuntime(cwd: string, id: string) {
   const unsubscribe = vi.fn();
   const rebind: { current: (() => Promise<void>) | null } = { current: null };
+  // agent 替身：图片守卫靠 agent.messages / agent.convertToLlm 清理历史里的空图片
+  const agent = {
+    messages: [] as any[],
+    convertToLlm: vi.fn((messages: unknown[]) => messages)
+  };
   const session = {
     sessionId: id,
     messages: [],
+    agent,
     sessionFile: undefined,
     isStreaming: false,
     prompt: vi.fn(async () => {}),
@@ -233,6 +239,34 @@ describe('PiBridge runtime lifecycle', () => {
     await old.rebind.current?.();
     expect(replacement.session.bindExtensions).toHaveBeenCalledOnce();
     expect(bridge.sessionFor().requireSession().sessionId).toBe('A2');
+  });
+
+  it('drops empty image blocks when a slot is created from history (docs/report2.md)', async () => {
+    const stubs = makeControllerStubs();
+    const bridge = makeBridgeStubs(stubs.factories);
+    const runtime = makeRuntime('/project/A', 'A');
+    // 历史里带一张空图片（内置浏览器截图在视图未绘制时的产物）：不算这层守卫，
+    // 每轮请求都会发出 `data:image/png;base64,`，上游解码失败 → 整轮 400。
+    runtime.session.agent.messages = [
+      {
+        role: 'toolResult',
+        toolCallId: 'call-1',
+        toolName: 'mcp',
+        content: [{ type: 'image', data: '', mimeType: 'image/png' }],
+        isError: false,
+        timestamp: 0
+      }
+    ];
+    mocks.createRuntime.mockImplementationOnce(async () => runtime);
+    await bridge.createRuntimeFor('/project/A');
+
+    const content = runtime.session.agent.messages[0].content as Array<Record<string, unknown>>;
+    expect(content.some((block) => block.type === 'image')).toBe(false);
+    // convertToLlm 也被包了一层：rewind 把历史从文件重建回来时同样过滤
+    const sanitized = (await runtime.session.agent.convertToLlm([
+      { role: 'user', content: [{ type: 'image', data: '', mimeType: 'image/png' }] }
+    ])) as Array<{ content: Array<Record<string, unknown>> }>;
+    expect(sanitized[0].content.some((block) => block.type === 'image')).toBe(false);
   });
 
   it('injects the subagent task tool by config and removes it on every slot when disabled', async () => {

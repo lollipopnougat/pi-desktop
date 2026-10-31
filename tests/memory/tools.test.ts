@@ -102,3 +102,37 @@ describe('记忆工具写入策略', () => {
     expect(listCandidates('project-a')).toEqual([]);
   });
 });
+
+describe('会话检索工具', () => {
+  const textOf = (result: { content: { type: string; text?: string }[] }) =>
+    result.content.map((part) => part.text || '').join('\n');
+
+  it('disabled 时拒绝', async () => {
+    writeMemoryConfig({ enabled: false });
+    const t = tools();
+    const searched = await execute(t.sessionSearchTool, { query: 'anything' });
+    expect(textOf(searched as never)).toContain('已禁用');
+    const read = await execute(t.sessionReadTool, { session: 'x' });
+    expect(textOf(read as never)).toContain('已禁用');
+  });
+
+  it('没有会话文件时给出空结果提示', async () => {
+    const sessions = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-memory-sessions-'));
+    const previousSessions = process.env.PI_SESSIONS_DIR;
+    process.env.PI_SESSIONS_DIR = sessions;
+    try {
+      const { resetSessionIndexStateForTests } =
+        await import('../../electron/memory/session-index');
+      resetSessionIndexStateForTests();
+      const t = tools();
+      const result = await execute(t.sessionSearchTool, { query: 'anything at all' });
+      expect(textOf(result as never)).toContain('没有匹配');
+      const read = await execute(t.sessionReadTool, { session: 'missing' });
+      expect(textOf(read as never)).toContain('未找到该会话');
+    } finally {
+      fs.rmSync(sessions, { recursive: true, force: true });
+      if (previousSessions === undefined) delete process.env.PI_SESSIONS_DIR;
+      else process.env.PI_SESSIONS_DIR = previousSessions;
+    }
+  });
+});

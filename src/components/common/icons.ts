@@ -35,6 +35,7 @@ import {
   faServer, // 🗄 provider/服务器
   faUsers, // 👥 子 agent 群组
   faMemory, // 💾 记忆系统
+  faWandMagicSparkles, // 自动沉淀/自动提取
   faRobot, // 🤖 助手
   faPlay, // ▶ 发送/运行
   faStop, // 中止
@@ -162,6 +163,7 @@ export const icons = {
   spinner: faCircleNotch,
   retry: faCircleNotch,
   memory: faMemory,
+  sparkles: faWandMagicSparkles,
   download: faDownload,
   brain: faBrain,
   lightbulb: faLightbulb,

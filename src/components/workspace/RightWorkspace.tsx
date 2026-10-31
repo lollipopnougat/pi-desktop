@@ -7,6 +7,10 @@ import ReviewPanel from '../code/ReviewPanel';
 import ResizeHandle from '../common/ResizeHandle';
 import Markdown from '../common/Markdown';
 import BrowserContent from './BrowserContent';
+import MemoryWorkspace from './MemoryWorkspace';
+import BackgroundTaskPanel from '../background-tasks/BackgroundTaskPanel';
+import type { IconName } from '../common/icons';
+import SubagentPanel from '../subagents/SubagentPanel';
 import { detectLanguage } from '../../hooks/useMonaco';
 import { useMonacoEditor } from '../../hooks/useMonacoEditor';
 import { usePiStore } from '../../store/pi-store';
@@ -15,7 +19,12 @@ import { t } from '../../i18n/zh';
 import type { CodeTab } from '../../types/shared';
 import { changeSignature, shortHash } from '../../lib/turn-changes';
 import { resolveTurnFileDiff } from '../../lib/turn-diff';
-import { onSelectWorkspaceTab } from '../../lib/app-commands';
+import {
+  onOpenWorkspaceBackgroundTasks,
+  onOpenWorkspaceMemory,
+  onOpenWorkspaceSubagents,
+  onSelectWorkspaceTab
+} from '../../lib/app-commands';
 import type { BrowserState, BrowserTabState } from '../../types/pi';
 
 interface BrowserWorkspaceTab extends BrowserTabState {
@@ -24,12 +33,35 @@ interface BrowserWorkspaceTab extends BrowserTabState {
   browserId: string;
 }
 
-type WorkspaceTab = CodeTab | BrowserWorkspaceTab;
+/** 单例「辅助」标签：记忆 / 子 agent / 后台任务，各自最多一页，没有文件路径 */
+type AuxTabKind = 'memory' | 'subagents' | 'backgroundTasks';
+
+interface AuxWorkspaceTab {
+  id: string;
+  type: AuxTabKind;
+  title: string;
+}
+
+type WorkspaceTab = CodeTab | BrowserWorkspaceTab | AuxWorkspaceTab;
+
+const AUX_TAB_TITLES: Record<AuxTabKind, () => string> = {
+  memory: () => t.memory.panelTitle,
+  subagents: () => t.subagents.panelTitle,
+  backgroundTasks: () => t.backgroundTasks.panelTitle
+};
+
+/** 辅助标签的图标（CodeTab 的 file/diff/review 不在此列） */
+const AUX_TAB_ICONS: Record<AuxTabKind, IconName> = {
+  memory: 'memory',
+  subagents: 'agents',
+  backgroundTasks: 'backgroundTasks'
+};
 
 const browserWorkspaceId = (id: string) => `browser:${id}`;
 
 export default function RightWorkspace() {
   const [codeTabs, setCodeTabs] = useState<CodeTab[]>([]);
+  const [auxTabKinds, setAuxTabKinds] = useState<AuxTabKind[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [browserState, setBrowserState] = useState<BrowserState>({
     enabled: false,
@@ -302,6 +334,15 @@ export default function RightWorkspace() {
     toolExecutions
   ]);
 
+  const openAuxTab = useCallback(
+    (kind: AuxTabKind) => {
+      setAuxTabKinds((previous) => (previous.includes(kind) ? previous : [...previous, kind]));
+      setRightPanelOpen(true);
+      selectTabId(kind);
+    },
+    [selectTabId, setRightPanelOpen]
+  );
+
   const activateTab = (tab: WorkspaceTab) => {
     selectTabId(tab.id);
     if (tab.type === 'browser') window.pi.browser.activate(tab.browserId).catch(() => {});
@@ -310,6 +351,11 @@ export default function RightWorkspace() {
   const closeTab = async (tab: WorkspaceTab) => {
     const currentTabs: WorkspaceTab[] = [
       ...codeTabsRef.current,
+      ...auxTabKinds.map<AuxWorkspaceTab>((kind) => ({
+        id: kind,
+        type: kind,
+        title: AUX_TAB_TITLES[kind]()
+      })),
       ...browserState.tabs.map<BrowserWorkspaceTab>((browserTab) => ({
         ...browserTab,
         id: browserWorkspaceId(browserTab.id),
@@ -324,9 +370,17 @@ export default function RightWorkspace() {
     }
     if (tab.type === 'browser') {
       await window.pi.browser.close(tab.browserId);
+    } else if (
+      tab.type === 'memory' ||
+      tab.type === 'subagents' ||
+      tab.type === 'backgroundTasks'
+    ) {
+      setAuxTabKinds((previous) => previous.filter((kind) => kind !== tab.type));
     } else {
-      setCodeTabs(nextTabs.filter((item): item is CodeTab => item.type !== 'browser'));
+      setCodeTabs((previous) => previous.filter((item) => item.id !== tab.id));
     }
+    // 关掉最后一个标签后右侧面板没有内容可看：顺手收起（否则留一块空面板）
+    if (nextTabs.length === 0) setRightPanelOpen(false);
   };
 
   const openBrowser = async () => {
@@ -361,15 +415,31 @@ export default function RightWorkspace() {
       })),
     [browserState.tabs]
   );
+  const auxTabs = useMemo<AuxWorkspaceTab[]>(
+    () =>
+      auxTabKinds.map((kind) => ({
+        id: kind,
+        type: kind,
+        title: AUX_TAB_TITLES[kind]()
+      })),
+    [auxTabKinds]
+  );
   const tabs = useMemo<WorkspaceTab[]>(
-    () => [...codeTabs, ...browserTabs],
-    [codeTabs, browserTabs]
+    () => [...codeTabs, ...auxTabs, ...browserTabs],
+    [codeTabs, auxTabs, browserTabs]
   );
   // 数字快捷键（Mod+1..9）切标签：标签集合含浏览器标签且随状态变化，用 ref 保留最新顺序
   const tabsRef = useRef<WorkspaceTab[]>(tabs);
   useEffect(() => {
     tabsRef.current = tabs;
   }, [tabs]);
+  useEffect(() => onOpenWorkspaceMemory(() => openAuxTab('memory')), [openAuxTab]);
+  useEffect(() => onOpenWorkspaceSubagents(() => openAuxTab('subagents')), [openAuxTab]);
+  useEffect(
+    () => onOpenWorkspaceBackgroundTasks(() => openAuxTab('backgroundTasks')),
+    [openAuxTab]
+  );
+
   useEffect(() => {
     return onSelectWorkspaceTab((index) => {
       const target = tabsRef.current[index];
@@ -380,12 +450,15 @@ export default function RightWorkspace() {
   }, [selectTabId]);
   const activeCodeTab = codeTabs.find((tab) => tab.id === activeTabId) || null;
   const activeBrowserTab = browserTabs.find((tab) => tab.id === activeTabId) || null;
-  const activeTab = activeCodeTab || activeBrowserTab;
+  const activeAuxTab = auxTabs.find((tab) => tab.id === activeTabId) || null;
+  const activeTab = activeCodeTab || activeAuxTab || activeBrowserTab;
   const isMarkdown =
     activeCodeTab?.type === 'file' && /\.(md|markdown)$/i.test(activeCodeTab.filePath || '');
   const mdPreview = activeCodeTab ? (mdPreviewMap[activeCodeTab.id] ?? true) : true;
   // 审核 tab 自带文件列表，再叠一层文件树会把 diff 挤没（默认面板宽度只有几百 px）
-  const showFileTree = !activeBrowserTab && activeCodeTab?.type !== 'review' && !treeCollapsed;
+  // 记忆标签自带双栏卡片布局，不叠文件树
+  const showFileTree =
+    !activeBrowserTab && !activeAuxTab && activeCodeTab?.type !== 'review' && !treeCollapsed;
 
   return (
     <div className="flex h-full w-full flex-col bg-od-bg-dark">
@@ -403,7 +476,17 @@ export default function RightWorkspace() {
               title={tab.title}
             >
               <Icon
-                name={tab.type === 'browser' ? 'browser' : tab.type === 'file' ? 'file' : 'diff'}
+                name={
+                  tab.type === 'browser'
+                    ? 'browser'
+                    : tab.type === 'memory' ||
+                        tab.type === 'subagents' ||
+                        tab.type === 'backgroundTasks'
+                      ? AUX_TAB_ICONS[tab.type]
+                      : tab.type === 'file'
+                        ? 'file'
+                        : 'diff'
+                }
                 className="w-3 shrink-0"
               />
               <span className="truncate">{tab.title}</span>
@@ -502,6 +585,9 @@ export default function RightWorkspace() {
           {activeCodeTab?.type === 'review' && (
             <ReviewPanel changes={activeCodeTab.changes ?? []} />
           )}
+          {activeAuxTab?.type === 'memory' && <MemoryWorkspace />}
+          {activeAuxTab?.type === 'subagents' && <SubagentPanel />}
+          {activeAuxTab?.type === 'backgroundTasks' && <BackgroundTaskPanel />}
           {activeBrowserTab && (
             <BrowserContent
               tab={activeBrowserTab}

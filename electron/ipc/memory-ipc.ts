@@ -152,6 +152,21 @@ export function registerMemoryIpc(piBridge: PiBridge) {
     return controller.search(query);
   });
 
+  // 待审核候选数（记忆按钮角标；只数文件，不读索引）
+  ipcMain.handle('pi:memory:pendingReviews', async () => {
+    return controller.getPendingReviewCount();
+  });
+
+  // === 检索引擎状态（FTS5 索引） ===
+  ipcMain.handle('pi:memory:indexStatus', async () => {
+    return controller.getIndexStats();
+  });
+
+  ipcMain.handle('pi:memory:reindex', async () => {
+    if (!controller.isEnabled()) throw new Error('记忆系统已禁用');
+    return controller.rebuildIndexes();
+  });
+
   // === extraction 原文查看（审计用） ===
   ipcMain.handle('pi:memory:readExtraction', async (_e, fileName: string) => {
     // 防路径穿越：只允许 extractions 目录下的纯文件名

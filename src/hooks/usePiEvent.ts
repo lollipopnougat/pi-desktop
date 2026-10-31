@@ -180,6 +180,8 @@ export function usePiEventSubscription() {
           setMessages(mergeSessionMessages(usePiStore.getState().messages, event.messages || []));
           // 会话内容更新（首条消息等），刷新会话列表
           usePiStore.getState().bumpSessionVersion();
+          // 自动沉淀可能在本轮结束时产出候选：刷新记忆按钮角标
+          void usePiStore.getState().refreshMemoryPendingReviews();
           break;
 
         // === Tool execution ===

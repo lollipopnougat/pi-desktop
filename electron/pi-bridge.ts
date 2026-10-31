@@ -39,6 +39,8 @@ import { registerLogsIpc } from './ipc/logs-ipc';
 import { logAgentEvent } from './logs/agent-events';
 import { logAppEvent } from './logs/channel-logs';
 import { normalizeLogConfig, setLogConfig } from './logs/logger';
+import { installImageGuard } from './media/image-guard';
+import { reconcileQueuedMessages } from './queued-messages';
 import {
   updatePlanTool,
   askTool,
@@ -1126,6 +1128,17 @@ export class PiBridge {
    */
   private async bindSessionExtensions(slot: SessionSlot): Promise<void> {
     const session = slot.session;
+    // 图片守卫与扩展绑定同点安装：每次「新 session 实例」都过一遍（建槽 / 会话被替换）。
+    // 历史里的空图片（见 docs/report2.md）会随每轮请求重发导致 400，这里在内存里清掉；
+    // 幂等，失败也不能影响建会话。
+    try {
+      if (installImageGuard(session)) {
+        console.warn('会话历史中存在非法图片（空 base64），已在内存中丢弃');
+        logAppEvent({ phase: 'images', message: '丢弃会话历史中的非法图片块' }, 'warn');
+      }
+    } catch (error) {
+      console.error('Failed to install image guard:', error);
+    }
     if (!session?.bindExtensions) return;
     try {
       await session.bindExtensions({
@@ -1166,6 +1179,14 @@ export class PiBridge {
         // 高频增量：只留最新一条，定时冲刷（见 SessionSlot.queueMessageUpdate）
         slot.queueMessageUpdate(event, identity);
         return;
+      }
+      if (event.type === 'queue_update') {
+        // 排队消息镜像随 SDK 队列实时对齐：引导消息可能刚被 SDK 投递掉（事件里的文本已不含它），
+        // 不在这里裁剪，镜像就会留着「已投递」的旧条目，之后同文本再次入队会被错配图片。
+        slot.queuedMessages = reconcileQueuedMessages(slot.queuedMessages, {
+          steering: [...event.steering],
+          followUp: [...event.followUp]
+        });
       }
       // 其余事件立即推送；先冲刷增量，避免渲染端先看到工具开始/消息结束却缺最后一段文本。
       // 走 slot.deliver（内部判断是否焦点槽）：后台槽的事件在这里被静默丢弃。

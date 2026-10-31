@@ -18,6 +18,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import type { McpServerEntry } from './config';
 import { loadMcpConfig, loadProjectMcpConfig } from './config';
+import { isUsableImageData } from '../media/image-guard';
 
 /** 已连接的 MCP 服务器会话 */
 interface McpServerSession {
@@ -327,7 +328,8 @@ class McpManager {
         .filter((c: any) => c.type === 'text')
         .map((c: any) => c.text);
       const text = textParts.join('\n') || JSON.stringify(result);
-      const content = (result.content || []).flatMap((part: any) => {
+      const droppedImages: number[] = [];
+      const content = (result.content || []).flatMap((part: any, index: number) => {
         if (part?.type === 'text' && typeof part.text === 'string') {
           return [{ type: 'text' as const, text: part.text }];
         }
@@ -336,10 +338,22 @@ class McpManager {
           typeof part.data === 'string' &&
           typeof part.mimeType === 'string'
         ) {
+          // 空/非法 base64 图片绝不能进工具结果：它会被写进会话历史，之后每轮请求
+          // 都带着 `data:image/png;base64,`，上游解码失败 → 整轮 400（见 docs/report2.md）。
+          if (!isUsableImageData(part.data)) {
+            droppedImages.push(index + 1);
+            return [];
+          }
           return [{ type: 'image' as const, data: part.data, mimeType: part.mimeType }];
         }
         return [];
       });
+      if (droppedImages.length > 0) {
+        content.push({
+          type: 'text' as const,
+          text: `已丢弃 ${droppedImages.length} 张无效图片（base64 数据为空或格式非法），可能是截图时页面未绘制。需要页面内容请改用 snapshot。`
+        });
+      }
       return {
         ok: true,
         text,

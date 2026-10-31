@@ -198,13 +198,6 @@ function BackgroundTaskDetail({
               {t.backgroundTasks.stopTask}
             </button>
           )}
-          <button
-            onClick={onClose}
-            className="flex h-6 w-6 items-center justify-center rounded text-od-text-dim transition-colors hover:bg-od-bg-hover hover:text-od-text-bright"
-            title={t.backgroundTasks.closePanel}
-          >
-            <Icon name="close" className="w-3" />
-          </button>
         </div>
 
         <div className="grid shrink-0 gap-2 border-b border-od-border px-4 py-3 text-xs md:grid-cols-2">
@@ -282,12 +275,13 @@ function BackgroundTaskDetail({
   );
 }
 
-interface BackgroundTaskPanelProps {
-  open: boolean;
-  onClose: () => void;
-}
-
-export default function BackgroundTaskPanel({ open, onClose }: BackgroundTaskPanelProps) {
+/**
+ * 后台任务列表（右侧工作区的「后台任务」标签）。
+ *
+ * 原来是聊天头部旁边的固定弹层；搬到工作区后可以拖宽、看长命令行与日志文件名，
+ * 也避免与子 agent / 记忆面板叠成三层浮窗。
+ */
+export default function BackgroundTaskPanel() {
   const snapshot = usePiStore((state) => state.backgroundTaskSnapshot);
   const sessionId = usePiStore((state) => state.sessionId);
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
@@ -309,20 +303,18 @@ export default function BackgroundTaskPanel({ open, onClose }: BackgroundTaskPan
   const removable = tasks.filter((task) => task.status !== 'running');
 
   useEffect(() => {
-    if (!open) return;
     void window.pi.backgroundTasks
       .getSnapshot()
       .then((next) => usePiStore.getState().setBackgroundTaskSnapshot(next))
       .catch(() => {});
-  }, [open]);
+  }, []);
 
   useEffect(() => {
-    if (!open || activeCount === 0) return;
+    if (activeCount === 0) return;
     const timer = window.setInterval(() => setClock(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [activeCount, open]);
+  }, [activeCount]);
 
-  if (!open) return null;
   const detailTask = detailTaskId ? allTasks.find((task) => task.id === detailTaskId) : null;
 
   /** 刷新主进程快照（删除后主进程也会推送，这里保证时序上立即生效） */
@@ -378,11 +370,8 @@ export default function BackgroundTaskPanel({ open, onClose }: BackgroundTaskPan
   };
 
   return (
-    <div
-      className="fixed z-40 flex min-h-52 max-h-[70vh] w-[34rem] flex-col rounded-lg border border-od-border-light bg-od-bg-alt shadow-2xl"
-      style={{ top: window.pi.platform === 'darwin' ? 44 : 36, right: 12 }}
-    >
-      <div className="flex shrink-0 items-center justify-between border-b border-od-border px-3 py-2">
+    <div className="flex h-full min-h-0 flex-col bg-od-bg-dark">
+      <div className="flex h-9 shrink-0 items-center justify-between gap-2 border-b border-od-border bg-od-bg-alt px-3">
         <div className="flex min-w-0 items-center gap-2 text-xs font-medium text-od-text-bright">
           <Icon name="backgroundTasks" className="w-3 shrink-0" />
           <span className="shrink-0">{t.backgroundTasks.panelTitle}</span>
@@ -438,16 +427,9 @@ export default function BackgroundTaskPanel({ open, onClose }: BackgroundTaskPan
               </button>
             ))}
           </div>
-          <button
-            onClick={onClose}
-            className="flex h-6 w-6 items-center justify-center rounded text-od-text-dim transition-colors hover:bg-od-bg-hover hover:text-od-text-bright"
-            title={t.backgroundTasks.closePanel}
-          >
-            <Icon name="close" className="w-3" />
-          </button>
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto px-2 py-2">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
         {tasks.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center px-4 py-6 text-center">
             <Icon name="backgroundTasks" className="mb-2 w-8 text-od-text-dim" />
@@ -458,7 +440,7 @@ export default function BackgroundTaskPanel({ open, onClose }: BackgroundTaskPan
             </p>
           </div>
         ) : (
-          <div className="flex flex-col gap-1.5">
+          <div className="mx-auto flex w-full max-w-[56rem] flex-col gap-1.5">
             {tasks.map((task) => (
               <BackgroundTaskCard
                 key={task.id}

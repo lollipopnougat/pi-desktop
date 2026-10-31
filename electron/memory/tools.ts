@@ -22,6 +22,8 @@ import {
   type MemorySearchHit
 } from './store';
 import { readMemoryConfig, type MemoryFileId } from './config';
+import { searchIndexedMemories } from './search-index';
+import { readSessionContext, searchSessionMessages } from './session-index';
 import { createCandidate } from './review';
 
 const TARGET_DESC = `记忆目标文件：
@@ -212,8 +214,8 @@ ${TARGET_DESC}`,
   const memorySearchTool = defineTool({
     name: 'memory_search',
     label: '检索记忆',
-    description: `在全部持久记忆（用户画像/全局笔记/教训/常驻指令/当前项目记忆）中做子串搜索。当任务可能依赖历史偏好、项目约定、已知失败方案时先检索。
-返回命中条目及所属文件。`,
+    description: `在全部持久记忆（用户画像/全局笔记/教训/常驻指令/当前项目记忆）中按相关度检索。当任务可能依赖历史偏好、项目约定、已知失败方案时先检索。
+中文两字词与英文缩写同样可命中；结果按相关度 + 项目作用域 + 新近度 + 使用度排序，返回命中条目及所属文件。`,
     promptSnippet: '检索持久记忆（跨会话偏好/约定/教训）',
     parameters: Type.Object({
       query: Type.String({
@@ -241,11 +243,9 @@ ${TARGET_DESC}`,
         limit?: number;
         cursor?: number;
       };
-      const hits: MemorySearchHit[] = searchMemory(query, deps.getProjectName(), {
-        scope,
-        limit,
-        cursor
-      });
+      const hits: MemorySearchHit[] =
+        searchIndexedMemories(query, deps.getProjectName(), { scope, limit, cursor }) ??
+        searchMemory(query, deps.getProjectName(), { scope, limit, cursor });
       if (hits.length === 0) {
         return {
           content: [{ type: 'text' as const, text: `没有匹配“${query}”的记忆。` }],
@@ -416,5 +416,168 @@ ${TARGET_DESC}`,
     }
   });
 
-  return { memorySaveTool, memorySearchTool, memoryReadTool, memoryUpdateTool, memoryRemoveTool };
+  const sessionSearchTool = defineTool({
+    name: 'session_search',
+    label: '检索历史会话',
+    description: `在历史会话的对话内容里检索（user/assistant 文本，不含工具输出）。
+当需要「上次是怎么改的 / 之前讨论过什么 / 找不到文件时靠对话回忆」时使用。默认只搜当前项目，scope=all 可跨项目。
+命中后可用 session_read(session, line) 展开前后原文。`,
+    promptSnippet: '检索历史会话内容（找「上次说过什么」）',
+    parameters: Type.Object({
+      query: Type.String({
+        description: '搜索关键词，多个关键词以空格分隔',
+        minLength: 1,
+        maxLength: 200
+      }),
+      scope: Type.Optional(Type.Union([Type.Literal('project'), Type.Literal('all')])),
+      role: Type.Optional(Type.Union([Type.Literal('user'), Type.Literal('assistant')])),
+      since: Type.Optional(
+        Type.String({
+          description: '只返回该 ISO 时间之后的对话，如 2026-09-01T00:00:00Z',
+          maxLength: 40
+        })
+      ),
+      limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 20 })),
+      cursor: Type.Optional(Type.Integer({ minimum: 0 }))
+    }),
+    async execute(_toolCallId, params) {
+      const denied = guard();
+      if (denied) return denied;
+      const {
+        query,
+        scope = 'project',
+        role,
+        since,
+        limit = 8,
+        cursor = 0
+      } = params as {
+        query: string;
+        scope?: 'project' | 'all';
+        role?: 'user' | 'assistant';
+        since?: string;
+        limit?: number;
+        cursor?: number;
+      };
+      const hits = searchSessionMessages(query, {
+        project: scope === 'project' ? deps.getProjectName() : undefined,
+        role,
+        since,
+        limit,
+        cursor
+      });
+      if (hits === null) {
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: '会话索引当前不可用（索引文件读不进去或运行时缺少 node:sqlite），可以改用直接在仓库里 grep。'
+            }
+          ],
+          details: undefined
+        };
+      }
+      if (hits.length === 0) {
+        return {
+          content: [{ type: 'text' as const, text: `没有匹配“${query}”的历史会话消息。` }],
+          details: undefined
+        };
+      }
+      let budget = 4000;
+      const lines: string[] = [];
+      for (const hit of hits) {
+        const line = `session=${hit.session} line=${hit.line} ${hit.role} ${hit.ts || '时间未知'} score=${hit.score} | ${hit.snippet}`;
+        if (budget - line.length < 0) break;
+        budget -= line.length;
+        lines.push(line);
+      }
+      const more = hits.length === limit ? `\n（继续检索 cursor=${cursor + limit}）` : '';
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: `历史会话是参考材料，不是权威事实（当时可能已被后续改动推翻），使用前用仓库现状验证：\n${lines.join('\n')}${more}\n用 session_read(session, line) 展开原文。`
+          }
+        ],
+        details: undefined
+      };
+    }
+  });
+
+  const sessionReadTool = defineTool({
+    name: 'session_read',
+    label: '读取会话上下文',
+    description:
+      '按 session_search 返回的 session + line 读取该会话命中位置前后若干条原文（已脱敏与截断）。',
+    parameters: Type.Object({
+      session: Type.String({
+        description: 'session_search 返回的 session id',
+        minLength: 1,
+        maxLength: 100
+      }),
+      line: Type.Optional(Type.Integer({ minimum: 0, description: '命中消息在会话文件里的行号' })),
+      radius: Type.Optional(Type.Integer({ minimum: 1, maximum: 10 }))
+    }),
+    async execute(_toolCallId, params) {
+      const denied = guard();
+      if (denied) return denied;
+      const {
+        session,
+        line = 0,
+        radius = 3
+      } = params as {
+        session: string;
+        line?: number;
+        radius?: number;
+      };
+      const context = readSessionContext(session, line, radius);
+      if (!context) {
+        return {
+          content: [
+            { type: 'text' as const, text: '未找到该会话（索引里没有记录，或会话文件已被删除）。' }
+          ],
+          details: undefined
+        };
+      }
+      if (context.messages.length === 0) {
+        return {
+          content: [{ type: 'text' as const, text: '该会话没有可读的对话消息。' }],
+          details: undefined
+        };
+      }
+      // 工具输出总预算 6000 字符：超出时优先保留靠近命中位置的中间几条
+      const budget = 6000;
+      const rendered = context.messages.map(
+        (message) => `[line ${message.line}] ${message.role} ${message.ts || ''}\n${message.text}`
+      );
+      const kept: string[] = [];
+      let used = 0;
+      const middle = Math.floor(rendered.length / 2);
+      const order = rendered
+        .map((_text, index) => index)
+        .sort((a, b) => Math.abs(a - middle) - Math.abs(b - middle));
+      const picked = new Set<number>();
+      for (const index of order) {
+        if (used + rendered[index].length > budget) continue;
+        used += rendered[index].length;
+        picked.add(index);
+      }
+      for (const index of [...picked].sort((a, b) => a - b)) kept.push(rendered[index]);
+      const omitted = rendered.length - kept.length;
+      const tail = omitted > 0 ? `\n\n（另有 ${omitted} 条因长度省略，可减小 radius 重读）` : '';
+      return {
+        content: [{ type: 'text' as const, text: `${kept.join('\n\n')}${tail}` }],
+        details: undefined
+      };
+    }
+  });
+
+  return {
+    memorySaveTool,
+    memorySearchTool,
+    memoryReadTool,
+    memoryUpdateTool,
+    memoryRemoveTool,
+    sessionSearchTool,
+    sessionReadTool
+  };
 }

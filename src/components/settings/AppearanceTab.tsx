@@ -24,6 +24,8 @@ export default function AppearanceTab() {
   const setFontSize = usePiStore((s) => s.setFontSize);
   const uiFontFamily = usePiStore((s) => s.uiFontFamily);
   const setUiFontFamily = usePiStore((s) => s.setUiFontFamily);
+  const translucentPanels = usePiStore((s) => s.translucentPanels);
+  const setTranslucentPanels = usePiStore((s) => s.setTranslucentPanels);
   const terminalFontFamily = usePiStore((s) => s.terminalFontFamily);
   const setTerminalFontFamily = usePiStore((s) => s.setTerminalFontFamily);
   const terminalFontSize = usePiStore((s) => s.terminalFontSize);
@@ -221,6 +223,18 @@ export default function AppearanceTab() {
           {/* Live preview：同时体现字号与界面字体 */}
           <div className="rounded bg-od-bg-dark px-2 py-1.5 text-sm text-od-text">
             The quick brown fox · 敏捷的棕色狐狸 · 123
+          </div>
+          {/* 毛玻璃半透明：只改渲染层背景，窗口材质（vibrancy / acrylic）不变 */}
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-sm text-od-text-bright">{t.translucentPanels}</div>
+              <div className="text-xs text-od-text-dim">{t.translucentPanelsDesc}</div>
+            </div>
+            <Switch
+              checked={translucentPanels}
+              onChange={(v) => setTranslucentPanels(v)}
+              ariaLabel={t.translucentPanels}
+            />
           </div>
         </div>
       </div>

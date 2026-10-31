@@ -3,11 +3,13 @@ import { usePiStore } from '../../store/pi-store';
 import TreeView from '../session/TreeView';
 import SessionInfoModal from '../session/SessionInfoModal';
 import Icon from '../common/Icon';
-import MemoryPanel from './MemoryPanel';
-import SubagentPanel from '../subagents/SubagentPanel';
-import BackgroundTaskPanel from '../background-tasks/BackgroundTaskPanel';
 import { t } from '../../i18n/zh';
 import { subscribeSessionRefresh } from '../../lib/session-refresh';
+import {
+  requestOpenWorkspaceBackgroundTasks,
+  requestOpenWorkspaceMemory,
+  requestOpenWorkspaceSubagents
+} from '../../lib/app-commands';
 
 /**
  * 聊天区域顶部标题栏：展示当前会话名称，并提供会话树入口。
@@ -21,6 +23,7 @@ export default function ChatHeader() {
   const setSessionLabel = usePiStore((s) => s.setSessionLabel);
   const treeViewOpen = usePiStore((s) => s.treeViewOpen);
   const setTreeViewOpen = usePiStore((s) => s.setTreeViewOpen);
+  const memoryPendingReviews = usePiStore((s) => s.memoryPendingReviews);
   const subagentSnapshot = usePiStore((s) => s.subagentSnapshot);
   const backgroundTaskSnapshot = usePiStore((s) => s.backgroundTaskSnapshot);
   const subagentActiveCount = (subagentSnapshot?.runs ?? []).filter(
@@ -31,9 +34,6 @@ export default function ChatHeader() {
   ).length;
   const [label, setLabel] = useState<string>('');
   const [infoOpen, setInfoOpen] = useState(false);
-  const [memoryOpen, setMemoryOpen] = useState(false);
-  const [subagentOpen, setSubagentOpen] = useState(false);
-  const [backgroundTaskOpen, setBackgroundTaskOpen] = useState(false);
   const [reloading, setReloading] = useState(false);
 
   // 版本驱动的刷新（agent_end…）走共享去抖：与侧栏、会话树合并成一次
@@ -105,55 +105,46 @@ export default function ChatHeader() {
           >
             <Icon name="rotate" spin={reloading} className="w-3.5" />
           </button>
-          <div className="relative">
-            <button
-              onClick={() => setMemoryOpen((v) => !v)}
-              className="flex items-center rounded-md px-1.5 py-1 text-xs text-od-text-dim transition-colors hover:bg-od-bg-hover hover:text-od-text-bright"
-              title={t.memory.panelTitle}
-            >
-              <Icon name="memory" className="w-3.5" />
-            </button>
-            {memoryOpen && <MemoryPanel onClose={() => setMemoryOpen(false)} />}
-          </div>
-          <div className="relative">
-            <button
-              onClick={() => {
-                setSubagentOpen((v) => !v);
-                setBackgroundTaskOpen(false);
-              }}
-              className={`flex items-center rounded-md px-1.5 py-1 text-xs transition-colors hover:bg-od-bg-hover hover:text-od-text-bright ${
-                subagentActiveCount > 0 ? 'text-od-accent' : 'text-od-text-dim'
-              }`}
-              title={t.subagents.panelTitle}
-            >
-              <Icon name="agents" className="w-3.5" />
-              {subagentActiveCount > 0 && (
-                <span className="ml-0.5 font-mono text-xs">{subagentActiveCount}</span>
-              )}
-            </button>
-            <SubagentPanel open={subagentOpen} onClose={() => setSubagentOpen(false)} />
-          </div>
-          <div className="relative">
-            <button
-              onClick={() => {
-                setBackgroundTaskOpen((v) => !v);
-                setSubagentOpen(false);
-              }}
-              className={`flex items-center rounded-md px-1.5 py-1 text-xs transition-colors hover:bg-od-bg-hover hover:text-od-text-bright ${
-                backgroundTaskActiveCount > 0 ? 'text-od-accent' : 'text-od-text-dim'
-              }`}
-              title={t.backgroundTasks.panelTitle}
-            >
-              <Icon name="backgroundTasks" className="w-3.5" />
-              {backgroundTaskActiveCount > 0 && (
-                <span className="ml-0.5 font-mono text-xs">{backgroundTaskActiveCount}</span>
-              )}
-            </button>
-            <BackgroundTaskPanel
-              open={backgroundTaskOpen}
-              onClose={() => setBackgroundTaskOpen(false)}
-            />
-          </div>
+          <button
+            onClick={() => requestOpenWorkspaceMemory()}
+            className={`flex items-center rounded-md px-1.5 py-1 text-xs transition-colors hover:bg-od-bg-hover hover:text-od-text-bright ${
+              memoryPendingReviews > 0 ? 'text-od-orange' : 'text-od-text-dim'
+            }`}
+            title={
+              memoryPendingReviews > 0
+                ? t.memory.pendingBadgeTitle(memoryPendingReviews)
+                : t.memory.panelTitle
+            }
+          >
+            <Icon name="memory" className="w-3.5" />
+            {memoryPendingReviews > 0 && (
+              <span className="ml-0.5 font-mono text-xs">{memoryPendingReviews}</span>
+            )}
+          </button>
+          <button
+            onClick={() => requestOpenWorkspaceSubagents()}
+            className={`flex items-center rounded-md px-1.5 py-1 text-xs transition-colors hover:bg-od-bg-hover hover:text-od-text-bright ${
+              subagentActiveCount > 0 ? 'text-od-accent' : 'text-od-text-dim'
+            }`}
+            title={t.subagents.panelTitle}
+          >
+            <Icon name="agents" className="w-3.5" />
+            {subagentActiveCount > 0 && (
+              <span className="ml-0.5 font-mono text-xs">{subagentActiveCount}</span>
+            )}
+          </button>
+          <button
+            onClick={() => requestOpenWorkspaceBackgroundTasks()}
+            className={`flex items-center rounded-md px-1.5 py-1 text-xs transition-colors hover:bg-od-bg-hover hover:text-od-text-bright ${
+              backgroundTaskActiveCount > 0 ? 'text-od-accent' : 'text-od-text-dim'
+            }`}
+            title={t.backgroundTasks.panelTitle}
+          >
+            <Icon name="backgroundTasks" className="w-3.5" />
+            {backgroundTaskActiveCount > 0 && (
+              <span className="ml-0.5 font-mono text-xs">{backgroundTaskActiveCount}</span>
+            )}
+          </button>
           <button
             onClick={() => setInfoOpen(true)}
             className="flex items-center rounded-md px-1.5 py-1 text-xs text-od-text-dim transition-colors hover:bg-od-bg-hover hover:text-od-text-bright"

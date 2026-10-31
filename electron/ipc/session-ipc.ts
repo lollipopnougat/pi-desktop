@@ -12,6 +12,7 @@ import {
 } from '../subagents/session-file';
 import { t } from '../../src/i18n/zh';
 import { exportFromFile } from '../sdk-export-html';
+import { installImageGuard } from '../media/image-guard';
 
 function assertSwitched(result: { cancelled: boolean }): void {
   if (result.cancelled) throw new Error(t.sessionSwitchCancelled);
@@ -501,6 +502,9 @@ export function registerSessionIpc(ctx: PiBridgeContext) {
       const session = ctx.sessionFor().requireSession();
       await session.abort();
       await session.navigateTree(id, summarize ? { summarize: true } : undefined);
+      // 回退/跳转是把历史从会话文件重建进 agent，可能把历史里的空图片重新装回来
+      // （首次加载时已清过一次），这里再过一遍，避免下一轮请求 400（docs/report2.md）
+      installImageGuard(session);
     })
   );
 

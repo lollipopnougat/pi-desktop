@@ -5,6 +5,8 @@ import Icon from '../common/Icon';
 import { t } from '../../i18n/zh';
 import { extractText } from '../../utils/text';
 import { BookmarkRail } from './BookmarkRail';
+import { CAPSULE_RESERVED_TOP } from './TodoProgressCapsule';
+import { getTodoProgress } from '../../utils/todo-progress';
 import ChatItemView from './ChatItemView';
 import StreamingTail from './StreamingTail';
 import PiWelcome from './PiWelcome';
@@ -128,6 +130,8 @@ export default function ChatStream() {
   const isStreaming = usePiStore((s) => s.isStreaming);
   const sessionId = usePiStore((s) => s.sessionId);
   const showBookmarks = usePiStore((s) => s.showBookmarks);
+  // 任务胶囊是浮在聊天区顶部的浮层（不占流），有胶囊时滚动区要自己让出顶部空间
+  const hasTodoCapsule = usePiStore((s) => getTodoProgress(s.todoPhases) !== null);
   const scrollRef = useRef<HTMLDivElement>(null);
   // 是否用户手动上滑（粘底滚动逻辑）
   const [stickToBottom, setStickToBottom] = useState(true);
@@ -173,11 +177,12 @@ export default function ChatStream() {
   }, [setStick]);
 
   // 自动滚动到底部：仅在新消息入列且当前粘底时执行
+  // （胶囊显隐会改变顶部内边距、内容整体下移，同样需要重新贴底）
   useEffect(() => {
     if (stickToBottom && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, stickToBottom]);
+  }, [messages, stickToBottom, hasTodoCapsule]);
 
   // 流式内容增长：由 StreamingTail 在 DOM 提交后回调。
   // 这里不订阅流式内容本身，否则整段历史会跟着逐帧重渲染。
@@ -224,8 +229,10 @@ export default function ChatStream() {
         suppressStickRef.current = false;
       }, 600);
       setStick(false);
-      // 贴近顶部留少量边距
-      container.scrollTo({ top: Math.max(0, offsetTop - 8), behavior: 'smooth' });
+      // 顶部留边距：直接用滚动区自己的 padding-top，这样有任务胶囊时
+      // 目标消息会落在胶囊下方而不是被盖住
+      const topInset = parseFloat(getComputedStyle(container).paddingTop) || 8;
+      container.scrollTo({ top: Math.max(0, offsetTop - topInset), behavior: 'smooth' });
     },
     [setStick]
   );
@@ -259,7 +266,7 @@ export default function ChatStream() {
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="h-full overflow-y-auto px-6 py-4"
+        className={`h-full overflow-y-auto px-6 py-4 ${hasTodoCapsule ? CAPSULE_RESERVED_TOP : ''}`}
         data-chat-scroll
       >
         <MessageList

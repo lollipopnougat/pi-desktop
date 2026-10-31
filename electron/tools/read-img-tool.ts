@@ -62,13 +62,14 @@ const MIME_BY_EXT: Record<string, string> = {
   '.bmp': 'image/bmp'
 };
 
-/** 读文件并转 base64；不支持的扩展名返回 null */
+/** 读文件并转 base64；不支持的扩展名/空文件返回 null（空文件会变成空图片，必须拒绝） */
 function readImageBase64(filePath: string): { data: string; mimeType: string } | null {
   const ext = path.extname(filePath).toLowerCase();
   const mimeType = MIME_BY_EXT[ext];
   if (!mimeType) return null;
   try {
     const buf = fs.readFileSync(filePath);
+    if (buf.length === 0) return null;
     return { data: buf.toString('base64'), mimeType };
   } catch {
     return null;
@@ -196,7 +197,7 @@ export const readImgTool = defineTool({
         content: [
           {
             type: 'text',
-            text: `无法读取图片：${imgPath}（文件不存在或格式不支持，支持 png/jpg/jpeg/gif/webp/bmp）`
+            text: `无法读取图片：${imgPath}（文件不存在、文件为空或格式不支持，支持 png/jpg/jpeg/gif/webp/bmp）`
           }
         ],
         details: { error: 'read_failed', path: absPath }

@@ -50,6 +50,7 @@ export default function App() {
     rightPanelWidth,
     todoPanelOpen,
     uiFontFamily,
+    translucentPanels,
     themeFamily,
     colorMode,
     sessionSearchOpen,
@@ -77,6 +78,7 @@ export default function App() {
       rightPanelWidth: s.rightPanelWidth,
       todoPanelOpen: s.todoPanelOpen,
       uiFontFamily: s.uiFontFamily,
+      translucentPanels: s.translucentPanels,
       themeFamily: s.themeFamily,
       colorMode: s.colorMode,
       setSettingsOpen: s.setSettingsOpen,
@@ -101,6 +103,11 @@ export default function App() {
   useEffect(() => {
     document.documentElement.style.setProperty('--ui-font', uiFontFamily);
   }, [uiFontFamily]);
+
+  // 记忆按钮角标：启动时取一次待审核候选数（之后随 agent_end 与记忆面板刷新）
+  useEffect(() => {
+    void usePiStore.getState().refreshMemoryPendingReviews();
+  }, []);
 
   // 应用主题：主题族或明暗变化时重应用
   useEffect(() => {
@@ -128,10 +135,11 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className={`flex h-full flex-col ${translucentPanels ? '' : 'bg-od-bg'}`}>
       {/* Top status bar - drag region for macOS traffic lights
           毛玻璃：标题栏不铺背景色，露出原生 vibrancy 层；底色由下方主区域负责。
-          设置页/会话树全屏面板打开时隐藏标题栏按钮（面板顶部透玻璃，按钮露出会穿透点击） */}
+          设置页/会话树全屏面板打开时隐藏标题栏按钮（面板顶部透玻璃，按钮露出会穿透点击）。
+          设置页关掉「毛玻璃半透明」时根容器铺 bg-od-bg，标题栏/侧栏/状态栏一并变不透明 */}
       <div
         className="flex items-center justify-between border-b border-od-border py-1.5 text-xs text-od-text"
         style={

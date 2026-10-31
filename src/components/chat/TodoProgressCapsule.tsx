@@ -2,6 +2,13 @@ import { usePiStore } from '../../store/pi-store';
 import { getTodoProgress } from '../../utils/todo-progress';
 import { t } from '../../i18n/zh';
 
+/**
+ * 胶囊浮在聊天区顶部（绝对定位 top-10 + h-7），不占文档流，
+ * 所以渲染胶囊时聊天滚动区必须自己预留同高的顶部内边距，否则第一条消息会被压在胶囊下面。
+ * 数值 = 胶囊高度 h-7 (1.75rem) + 与下方内容的间距 (0.5rem)；聊天区默认是 py-4 (1rem)。
+ */
+export const CAPSULE_RESERVED_TOP = 'pt-9';
+
 export default function TodoProgressCapsule() {
   const todoPhases = usePiStore((state) => state.todoPhases);
   const todoPanelOpen = usePiStore((state) => state.todoPanelOpen);
