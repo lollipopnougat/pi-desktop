@@ -1,0 +1,23 @@
+tests/memory/tools.test.ts
+  s_9803825d2c1a63::t_9ee97f9803ee35 17-25
+tests/memory/session-index.test.ts
+  s_9803825d2c1a63::t_e51928a73eae19 66-69
+tests/memory/controller-injection.test.ts
+  s_9803825d2c1a63::t_6bd8c072942eb5 19-20,40-43,59-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "11b93f91a109085bf2f51d701924d29988c7c2ad",
+  "prompts": {},
+  "sessions": {
+    "s_9803825d2c1a63": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a17e7e-7bd8-73b8-b60c-c2286ea53435",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "lollipopnougat <ab2defg145@gmail.com>"
+    }
+  }
+}
