@@ -1,16 +1,33 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EventEmitter } from 'events';
 
-const mocks = vi.hoisted(() => ({
-  platform: 'darwin',
-  paths: new Set<string>(),
-  directories: new Map<string, string[]>(),
-  execFile: vi.fn(),
-  spawn: vi.fn(),
-  openPath: vi.fn(),
-  getFileIcon: vi.fn(),
-  createFromPath: vi.fn()
-}));
+const mocks = vi.hoisted(() => {
+  // 用例用 POSIX 风格路径描述「模拟平台」，而 production 给 darwin/linux 候选用宿主的
+  // path.join 拼路径：Windows 宿主下会变成反斜杠。查找与断言前统一归一化分隔符，
+  // 避免「模拟平台」被宿主平台污染（Windows 上 6 个 darwin/linux 用例曾因此全挂）。
+  const normalize = (value: string) => value.replace(/\\/g, '/');
+  return {
+    normalize,
+    platform: 'darwin',
+    paths: new Set<string>(),
+    directories: new Map<string, string[]>(),
+    execFile: vi.fn(),
+    spawn: vi.fn(),
+    openPath: vi.fn(),
+    getFileIcon: vi.fn(),
+    createFromPath: vi.fn(),
+    hasPath: (paths: Set<string>, file: string) => {
+      for (const candidate of paths) if (normalize(candidate) === normalize(file)) return true;
+      return false;
+    },
+    directoryOf: (directories: Map<string, string[]>, key: string) => {
+      for (const [candidate, entries] of directories) {
+        if (normalize(candidate) === normalize(key)) return entries;
+      }
+      return undefined;
+    }
+  };
+});
 
 vi.mock('electron', () => ({
   app: { getFileIcon: mocks.getFileIcon },
@@ -20,9 +37,12 @@ vi.mock('electron', () => ({
 vi.mock('child_process', () => ({ execFile: mocks.execFile, spawn: mocks.spawn }));
 vi.mock('fs', () => ({
   default: {
-    existsSync: (file: string) => mocks.paths.has(file),
+    existsSync: (file: string) => mocks.hasPath(mocks.paths, file),
     readdirSync: (root: string) =>
-      (mocks.directories.get(root) ?? []).map((name) => ({ name, isDirectory: () => true })),
+      (mocks.directoryOf(mocks.directories, root) ?? []).map((name) => ({
+        name,
+        isDirectory: () => true
+      })),
     realpathSync: (file: string) => file
   }
 }));
@@ -85,7 +105,7 @@ describe('本机外部应用图标', () => {
     );
     expect(apps.every((candidate) => !('path' in candidate))).toBe(true);
     const iconCall = mocks.execFile.mock.calls.find(([file]) => file === '/usr/bin/osascript')!;
-    expect(iconCall[1].slice(-3)).toEqual([vscode, customPath, finder]);
+    expect(iconCall[1].slice(-3).map(mocks.normalize)).toEqual([vscode, customPath, finder]);
     expect(iconCall[1][3]).not.toContain(customPath);
     expect(mocks.getFileIcon).not.toHaveBeenCalled();
   });
@@ -164,7 +184,7 @@ describe('本机外部应用图标', () => {
     const apps = await detectExternalApps();
 
     expect(apps[0]).toMatchObject({ id: 'vscode', icon: image('code-linux').toDataURL() });
-    expect(mocks.createFromPath).toHaveBeenCalledWith(iconPath);
+    expect(mocks.normalize(mocks.createFromPath.mock.calls[0][0])).toBe(iconPath);
     expect(mocks.getFileIcon).not.toHaveBeenCalled();
   });
 
@@ -187,12 +207,13 @@ describe('本机外部应用图标', () => {
     ]);
 
     await openExternalApp('/project/source.ts', 'idea-ce');
-    expect(mocks.execFile).toHaveBeenCalledWith(
-      '/usr/bin/open',
-      ['-a', '/Users/test/Applications/IntelliJ IDEA CE.app', '/project/source.ts'],
-      expect.any(Object),
-      expect.any(Function)
-    );
+    const openCall = mocks.execFile.mock.calls.find(([file]) => file === '/usr/bin/open')!;
+    expect(openCall[1].map(mocks.normalize)).toEqual([
+      '-a',
+      '/Users/test/Applications/IntelliJ IDEA CE.app',
+      '/project/source.ts'
+    ]);
+    expect(openCall).toHaveLength(4);
   });
 
   it('Windows 定位自定义目录的 Visual Studio，排除 Build Tools 并选择最新 IDE', async () => {
@@ -282,11 +303,9 @@ describe('本机外部应用图标', () => {
       'default'
     ]);
     await openExternalApp('/project/main.java', 'idea');
-    expect(mocks.spawn).toHaveBeenCalledWith(
-      executable,
-      ['/project/main.java'],
-      expect.any(Object)
-    );
+    const [opened, openedArgs] = mocks.spawn.mock.calls[0];
+    expect(mocks.normalize(opened)).toBe(executable);
+    expect(openedArgs).toEqual(['/project/main.java']);
   });
 
   it('应用移动后重新定位，使用新路径打开而非旧缓存', async () => {

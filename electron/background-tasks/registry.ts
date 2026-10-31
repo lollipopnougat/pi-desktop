@@ -90,7 +90,10 @@ function shellInvocation(command: string): {
   if (process.platform === 'win32') {
     return {
       executable: process.env.COMSPEC || 'cmd.exe',
-      args: ['/d', '/s', '/c', command],
+      // /s 会剥掉命令串首尾各一个引号：命令本身是 `"C:\Program Files\node.exe" x` 时
+      // 会被拆成 `C:\Program Files\node.exe" x`（报『C:\Program 不是内部或外部命令』）。
+      // 交给 cmd 前必须自己包一层——Node 的 shell:true 在 Windows 上同样是 `cmd /d /s /c "…"`。
+      args: ['/d', '/s', '/c', `"${command}"`],
       windowsVerbatimArguments: true
     };
   }

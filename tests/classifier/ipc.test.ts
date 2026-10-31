@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
+import path from 'node:path';
 
 const { tmpDir, classifiersPath, handlers } = vi.hoisted(() => {
   const { join } = require('path') as typeof import('path');
@@ -166,7 +167,7 @@ describe('pi:getClassifierLogPath', () => {
   it('返回日志目录与今日文件（<agentDir>/logs/classifier-YYYY-MM-DD.log）', async () => {
     setup(makeRuntime().runtime);
     const result = await invoke('pi:getClassifierLogPath');
-    expect(result.dir).toBe(`${tmpDir}/logs`);
+    expect(result.dir).toBe(path.join(tmpDir, 'logs'));
     expect(result.file).toMatch(/classifier-\d{4}-\d{2}-\d{2}\.log$/);
     expect(result.enabled).toBe(true);
   });
