@@ -1,0 +1,118 @@
+AGENTS.md
+  h_cc604c9bda8355 59,149,191,336,341
+README.md
+  h_cc604c9bda8355 18,63,102-107
+electron/browser/controller.ts
+  h_cc604c9bda8355 26-33,42-46,390-480
+electron/browser/picker.ts
+  h_cc604c9bda8355 1-263
+electron/browser/types.ts
+  h_cc604c9bda8355 38-58
+electron/ipc/browser-ipc.ts
+  h_cc604c9bda8355 37-42
+electron/ipc/permission-ipc.ts
+  h_cc604c9bda8355 6-7,11,64-84
+electron/permission/controller.ts
+  h_cc604c9bda8355 17-19,32-33,36-37,42-43,49,54-55,63-71,79,83-117,130-131,159-181,188-193,212-219,289-372,397-547,551,607-608,642-683,701-709,726,731-732,745-746,828-829,832,870-871
+electron/permission/policy.ts
+  h_cc604c9bda8355 4,7,10-11,30-35,41,49-55,239-307
+electron/permission/reviewer/context.ts
+  h_cc604c9bda8355 1-206
+electron/permission/reviewer/policy-prompt.ts
+  h_cc604c9bda8355 1-96
+electron/permission/reviewer/review.ts
+  h_cc604c9bda8355 1-172
+electron/permission/reviewer/session-pool.ts
+  h_cc604c9bda8355 1-151
+electron/permission/reviewer/verdict.ts
+  h_cc604c9bda8355 1-122
+electron/pi-bridge.ts
+  h_cc604c9bda8355 232,255-256,531-536,767-769
+preload.ts
+  h_cc604c9bda8355 246-263,371-373
+src/App.tsx
+  h_cc604c9bda8355 32-33,158-161,164-175,233-243,245-247,249-258,260-270
+src/components/chat/ChatInput.tsx
+  h_cc604c9bda8355 11-14,108-117,135-137,144-146,154-156,164-166,174-177,452-456,461-472,479-496,518-525,536-541,550-553,557-564,666-668,698-700,759-764,959-965,1004-1005,1015-1021,1025,1029-1032,1037-1038,1040
+src/components/chat/ChatStream.tsx
+  h_cc604c9bda8355 11,294-296
+src/components/chat/ElementAnnotationCards.tsx
+  h_cc604c9bda8355 1,3-4,8-14,16-22,24,26,28-31,33,36-65,67-70,72-82,84-101,104-105
+src/components/chat/PermissionApprovalPanel.tsx
+  h_cc604c9bda8355 1,19-20,24,40-100,107-108,128,130-133,135-155,243-253,280-282
+src/components/chat/QuoteAnnotationCards.tsx
+  h_cc604c9bda8355 1-84
+src/components/chat/SelectionAnnotateButton.tsx
+  h_cc604c9bda8355 1-133
+src/components/chat/messages/AssistantMessage.tsx
+  h_cc604c9bda8355 82,84-91
+src/components/common/Tooltip.tsx
+  h_cc604c9bda8355 1-130
+src/components/common/icons.ts
+  h_cc604c9bda8355 69-70,89,94,146,195-196
+src/components/session/SessionNavButtons.tsx
+  h_cc604c9bda8355 1-199
+src/components/session/SessionSidebar.tsx
+  h_cc604c9bda8355 11,411-440
+src/components/settings/AgentTab.tsx
+  h_cc604c9bda8355 346-355,385-408,458-486,517-534,558,688-810
+src/components/workspace/BrowserContent.tsx
+  h_cc604c9bda8355 4-5,7,79-82,172-207,263-278
+src/hooks/loadSession.ts
+  h_cc604c9bda8355 1,87-90,102-107,110-111,137-139
+src/hooks/useEventBindings.ts
+  h_cc604c9bda8355 23,79-86
+src/i18n/zh.ts
+  h_cc604c9bda8355 28-32,70-85,619-620,785-848
+src/index.css
+  h_cc604c9bda8355 71-73,426-441
+src/lib/element-annotations.ts
+  h_cc604c9bda8355 1-120
+src/lib/quote-annotations.ts
+  h_cc604c9bda8355 1-73
+src/lib/session-nav.ts
+  h_cc604c9bda8355 1-50
+src/lib/shortcut-commands.ts
+  h_cc604c9bda8355 15,95-100
+src/lib/shortcuts.ts
+  h_cc604c9bda8355 34-36
+src/store/pi-store.ts
+  h_cc604c9bda8355 12-13,149-161,163-164,183-199,340-346,459-462,500-505,567-584,824,915-916,991,993-994,1004-1016,1078-1098,1132-1134,1349-1351,1359-1380
+src/types/pi.d.ts
+  h_cc604c9bda8355 926,931-932,964-984,1133-1168,1397-1399,1402,1417-1424,1445-1446,1451-1454,1574-1576
+tests/browser/controller.test.ts
+  h_cc604c9bda8355 306-404
+tests/browser/picker.test.ts
+  h_cc604c9bda8355 1-21
+tests/lib/element-annotations.test.ts
+  h_cc604c9bda8355 1-155
+tests/lib/quote-annotations.test.ts
+  h_cc604c9bda8355 1-100
+tests/lib/session-nav.test.ts
+  h_cc604c9bda8355 1-218
+tests/permission/reviewer-config.test.ts
+  h_cc604c9bda8355 1-99
+tests/permission/reviewer-context.test.ts
+  h_cc604c9bda8355 1-205
+tests/permission/reviewer-controller.test.ts
+  h_cc604c9bda8355 1-366
+tests/permission/reviewer-review.test.ts
+  h_cc604c9bda8355 1-192
+tests/permission/reviewer-verdict.test.ts
+  h_cc604c9bda8355 1-133
+tests/session/load-session.test.ts
+  h_cc604c9bda8355 49-50
+tests/shortcuts/shortcuts.test.ts
+  h_cc604c9bda8355 208-230
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "50fdf9162adc66c26bc4322bcc7dbc4ca5f0908e",
+  "prompts": {},
+  "humans": {
+    "h_cc604c9bda8355": {
+      "author": "lollipopnougat <ab2defg145@gmail.com>"
+    }
+  }
+}
