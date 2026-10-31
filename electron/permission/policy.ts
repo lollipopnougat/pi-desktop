@@ -1,12 +1,14 @@
 /**
  * 权限沙箱策略与安全分类器（纯函数，无 IO）。
  *
- * 四种策略（参考 pi-permission-system 的三态权限模型简化而来）：
+ * 五种策略（参考 pi-permission-system 的三态权限模型简化而来）：
  * - ask-all:        每条指令均审批 — 所有工具调用都弹审批面板
  * - auto-safe:      自动审批安全指令 — 只读工具 + 白名单 bash 命令自动放行，其余审批
- * - classifier-auto: 决策模型自动审批 — 每次调用先交模型，安全且置信度达标才自动放行，
+ * - classifier-auto: 决策模型自动审批 — 每次调用先交模型打分，安全且置信度达标才自动放行，
  *                   危险、不确定或判定失败时人工审批；白名单与会话授权均不短路模型判定，
  *                   唯一例外是用户显式开启的「默认放行工作目录写入」（allowWriteInCwd）
+ * - reviewer-auto:  帮我审批 — 每次调用起一个只读的评审员子会话（读对话转录 + 只读查证）
+ *                   判断「风险」与「用户是否授权」，放行或拒绝；不可用时按配置回退人工
  * - allow-all:      允许所有指令 — 全部放行不审批（yolo）
  *
  * 安全分类器只回答一个问题：这条工具调用在 auto-safe 策略下是否可自动放行。
@@ -25,12 +27,18 @@ import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 
 /** 权限策略 */
-export type PermissionPolicy = 'ask-all' | 'auto-safe' | 'classifier-auto' | 'allow-all';
+export type PermissionPolicy =
+  | 'ask-all'
+  | 'auto-safe'
+  | 'classifier-auto'
+  | 'reviewer-auto'
+  | 'allow-all';
 
 export const PERMISSION_POLICIES: PermissionPolicy[] = [
   'ask-all',
   'auto-safe',
   'classifier-auto',
+  'reviewer-auto',
   'allow-all'
 ];
 
@@ -38,7 +46,13 @@ export const DEFAULT_PERMISSION_POLICY: PermissionPolicy = 'auto-safe';
 
 /** 校验任意值为合法策略（loadUiSettings / IPC 输入防抖） */
 export function isPermissionPolicy(v: unknown): v is PermissionPolicy {
-  return v === 'ask-all' || v === 'auto-safe' || v === 'classifier-auto' || v === 'allow-all';
+  return (
+    v === 'ask-all' ||
+    v === 'auto-safe' ||
+    v === 'classifier-auto' ||
+    v === 'reviewer-auto' ||
+    v === 'allow-all'
+  );
 }
 
 /** 安全工具白名单（auto-safe 下自动放行的只读、交互与流程工具）
@@ -219,6 +233,75 @@ export function normalizeClassifierApprovalConfig(v: unknown): ClassifierApprova
   const minConfidence = clampNumber(raw.minConfidence, 0, 1);
   if (minConfidence !== undefined) out.minConfidence = minConfidence;
   if (typeof raw.allowWriteInCwd === 'boolean') out.allowWriteInCwd = raw.allowWriteInCwd;
+  return out;
+}
+
+/**
+ * 「帮我审批」（reviewer-auto）配置。
+ *
+ * 与决策模型（classifier-auto）的区别：这里的评审员是一个**普通的 chat 模型会话**，
+ * 能读对话转录、能用只读工具查证（read/grep/find/ls），因此能回答「用户是否授权了这件事」，
+ * 代价是每次评审要走一次完整的模型往返（秒级）。
+ */
+export interface ReviewerApprovalConfig {
+  /** 评审模型 provider（缺省 = 跟随当前会话模型） */
+  providerId?: string;
+  /** 评审模型 id（必须与 providerId 成对，否则整对丢弃 = 跟随会话模型） */
+  modelId?: string;
+  /** 单次评审超时（毫秒） */
+  timeoutMs?: number;
+  /**
+   * 评审不可用时怎么办：
+   * - 'ask-user'（默认）：回退人工审批 —— 桌面端有人在场，回退比拒绝更安全且不卡死任务
+   * - 'deny'：直接拒绝（Codex 的 fail-closed 语义，适合无人值守）
+   */
+  onFailure?: 'ask-user' | 'deny';
+  /** 连续拒绝多少次后停止自动评审（本回合剩余调用一律人工）；0 = 不熔断 */
+  maxConsecutiveDenials?: number;
+  /** 追加到内置安全策略之后的组织/项目特定规则（空 = 只用内置策略） */
+  extraPolicy?: string;
+  /** 是否给评审员只读查询工具（read/grep/find/ls）；关闭 = 纯凭转录判断，最省 token */
+  readOnlyTools?: boolean;
+}
+
+/** 评审超时边界（默认 45s：桌面端有人在等，比 Codex 的 90s 更紧） */
+export const REVIEWER_TIMEOUT_MIN_MS = 5000;
+export const REVIEWER_TIMEOUT_MAX_MS = 180000;
+export const DEFAULT_REVIEWER_TIMEOUT_MS = 45000;
+/** 连续拒绝熔断的默认值与上限（0 = 关闭熔断） */
+export const DEFAULT_REVIEWER_MAX_DENIALS = 3;
+export const REVIEWER_MAX_DENIALS_LIMIT = 10;
+/** 用户追加策略文本上限（防止把整篇文档贴进去把每次评审的输入预算吃光） */
+export const REVIEWER_EXTRA_POLICY_MAX_CHARS = 4000;
+
+/**
+ * 归一化「帮我审批」配置（IPC / ui-config.json 输入防抖）。
+ * providerId / modelId 成对校验：半配置只会让评审员每次都不可用，白等一次超时。
+ */
+export function normalizeReviewerApprovalConfig(v: unknown): ReviewerApprovalConfig {
+  if (!v || typeof v !== 'object') return {};
+  const raw = v as ReviewerApprovalConfig;
+  const out: ReviewerApprovalConfig = {};
+  const providerId = typeof raw.providerId === 'string' ? raw.providerId.trim() : '';
+  const modelId = typeof raw.modelId === 'string' ? raw.modelId.trim() : '';
+  if (providerId && modelId) {
+    out.providerId = providerId;
+    out.modelId = modelId;
+  }
+  const timeoutMs = clampNumber(
+    raw.timeoutMs,
+    REVIEWER_TIMEOUT_MIN_MS,
+    REVIEWER_TIMEOUT_MAX_MS
+  );
+  if (timeoutMs !== undefined) out.timeoutMs = Math.round(timeoutMs);
+  if (raw.onFailure === 'ask-user' || raw.onFailure === 'deny') out.onFailure = raw.onFailure;
+  const maxDenials = clampNumber(raw.maxConsecutiveDenials, 0, REVIEWER_MAX_DENIALS_LIMIT);
+  if (maxDenials !== undefined) out.maxConsecutiveDenials = Math.round(maxDenials);
+  if (typeof raw.extraPolicy === 'string') {
+    const text = raw.extraPolicy.trim().slice(0, REVIEWER_EXTRA_POLICY_MAX_CHARS);
+    if (text) out.extraPolicy = text;
+  }
+  if (typeof raw.readOnlyTools === 'boolean') out.readOnlyTools = raw.readOnlyTools;
   return out;
 }
 

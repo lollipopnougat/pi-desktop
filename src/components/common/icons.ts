@@ -66,7 +66,8 @@ import {
   faEye, // 眼睛 显示密码
   faEyeSlash, // 眼睛划线 隐藏密码
   faClipboardList, // 计划模式
-  faComment, // 💬 批注
+  faComment,
+  faQuoteLeft, // 引用批注
   faPencil, // ✏️ 选中后加批注
   faBolt, // 标准模式
   faListCheck, // todo 清单
@@ -85,10 +86,12 @@ import {
   faGlobe, // 浏览器
   faArrowRotateRight, // 刷新
   faArrowUpRightFromSquare, // 外部打开
+  faCrosshairs, // 标记页面元素
   faHouse, // 主页/空白页
   faExpand, // 右侧工作区最大化
   faDownLeftAndUpRightToCenter, // 退出右侧工作区最大化
   faScaleBalanced, // 决策模型（classifier）
+  faUserShield, // 帮我审批（reviewer）
   faKeyboard, // 键盘快捷键
   faScroll // 日志
 } from '@fortawesome/free-solid-svg-icons';
@@ -140,6 +143,7 @@ export const icons = {
   foldingPanel: faArrowRight,
   clipboardList: faClipboardList,
   comment: faComment,
+  quote: faQuoteLeft,
   pencil: faPencil,
   bolt: faBolt,
   todo: faListCheck,
@@ -188,6 +192,8 @@ export const icons = {
   expand: faExpand,
   restore: faDownLeftAndUpRightToCenter,
   classifier: faScaleBalanced,
+  reviewer: faUserShield,
+  crosshairs: faCrosshairs,
   keyboard: faKeyboard,
   logs: faScroll
 };

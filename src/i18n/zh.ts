@@ -25,6 +25,11 @@ export const t = {
 
   // 面板开关（标题栏）
   toggleSidebar: '切换会话面板',
+  /** 会话导航历史（标题栏左上角前进/后退，同浏览器语义） */
+  navBack: '后退到上一个会话',
+  navForward: '前进到下一个会话',
+  navHistoryLabel: '最近的会话',
+  navHistoryCurrent: '当前',
   toggleTerminal: '切换终端面板',
   toggleCodePanel: '切换代码面板',
   toggleRightPanel: '切换右侧工作区',
@@ -62,6 +67,22 @@ export const t = {
   browserStop: '停止加载',
   browserEmptyTitle: '开始浏览',
   browserEmptyHint: '输入网址或搜索内容',
+  browserPickElement: '标记页面元素',
+  browserPickElementHint: '指向网页元素以提问或请求修改',
+  browserPicking: '点页面上的元素，按 Esc 取消',
+  browserPickFailed: '标记元素失败',
+  browserPicked: '已标记元素，可在输入框上方写批注',
+  // 页面元素批注（输入框上方的卡片）
+  annotationTitle: (n: number) => `元素批注 · ${n}`,
+  annotationPlaceholder: '说明你想怎么改，或想问这个元素什么',
+  annotationNoScreenshot: '未截到元素截图',
+  annotationRemove: '删除批注',
+  annotationClear: '清空批注',
+  annotationGoalNoImage: 'Goal 模式暂不支持附带截图，本次只发送批注的文字信息',
+  annotationCommentRequired: '先给每条批注写一句说明（不想保留就删掉它）',
+  quoteAddToChat: '添加到对话',
+  quoteTitle: (n: number) => `引用批注 · ${n}`,
+  quoteCommentPlaceholder: '想让我改哪里，或想问这段什么',
   workspaceOpenFile: '打开文件',
   workspaceOpenTerminal: '打开终端',
   workspaceEmpty: '右侧工作区',
@@ -595,6 +616,8 @@ export const t = {
   shortcutActionText: {
     'session.new': { label: '新建会话', desc: '在当前项目开始一个新会话' },
     'session.search': { label: '搜索会话', desc: '按关键词搜索历史会话与项目' },
+    'session.back': { label: '后退到上一个会话', desc: '沿会话导航历史回退一步' },
+    'session.forward': { label: '前进到下一个会话', desc: '沿会话导航历史前进一步' },
     'session.tree': { label: '切换会话树', desc: '打开或关闭当前会话的树状视图' },
     'session.reload': { label: '重新加载会话', desc: '从磁盘重新读取当前会话的内容' },
     'session.exportHtml': { label: '导出会话为 HTML', desc: '把当前会话保存成可分享的网页' },
@@ -758,6 +781,70 @@ export const t = {
   permissionClassifierUnavailable: '未能判定',
   permissionClassifierUnavailableHint: '已回退人工审批',
   permissionClassifierConfidence: (percent: number) => `置信度 ${percent}%`,
+
+  // 设置页 - 权限沙箱：「帮我审批」（reviewer-auto 策略）
+  permissionReviewerAuto: '帮我审批',
+  permissionReviewerAutoDesc: '由只读评审员读对话后自行放行或拒绝，不可用时回退人工',
+  permissionReviewerLabel: '帮我审批',
+  permissionReviewerDesc:
+    '把「本来会问你」的调用交给一个只读的评审员子会话：它读对话转录、可用只读工具查证，判断「固有风险」与「用户是否授权了这件事」，然后自行放行或拒绝。白名单内的安全调用（read / ls / git status 等）照旧直接放行，不会惊动评审员。切到「帮我审批」策略后生效',
+  permissionReviewerModelLabel: '评审模型',
+  permissionReviewerModelFollow: '跟随当前会话模型',
+  permissionReviewerModelMissing: '当前不可用',
+  permissionReviewerModelEmpty: '暂无可用模型（跟随会话模型，无需配置）',
+  permissionReviewerTimeoutLabel: '评审超时（毫秒）',
+  permissionReviewerTimeoutHint: '5000 ~ 180000，留空用默认 45000',
+  permissionReviewerTimeoutWarn:
+    '评审超时偏小（小于 15000ms）：评审要走一次完整的模型往返并可能做一两次只读查证，慢模型经常 20 秒以上。超时后会按下面的失败处理方式回落。',
+  permissionReviewerOnFailureLabel: '评审不可用时',
+  permissionReviewerOnFailureAsk: '回退人工审批',
+  permissionReviewerOnFailureDeny: '直接拒绝',
+  permissionReviewerOnFailureHint:
+    '超时、输出不是合法 JSON、模型不可用、命中不可自动放行的危险类目、或已触发熔断时：回退人工审批适合本机有人在场；直接拒绝适合无人值守',
+  permissionReviewerMaxDenialsLabel: '连续拒绝熔断',
+  permissionReviewerMaxDenialsHint:
+    '0 ~ 10，0 = 不熔断，留空用默认 3。连续拒绝达阈值后本会话剩余调用一律人工审批',
+  permissionReviewerReadOnlyToolsLabel: '允许评审员只读查证',
+  permissionReviewerReadOnlyToolsHint:
+    '给评审员 read / grep / find / ls，让它能查证「路径在不在、文件里有没有密钥、仓库是不是私有」。不会给 bash（本项目没有系统级沙箱）。关闭后评审员只凭对话转录判断，更省 token 但误判更多',
+  permissionReviewerPolicyLabel: '附加安全策略',
+  permissionReviewerPolicyHint:
+    '追加在评审员内置策略之后，用来补充项目/团队的固有规则。内置策略不可修改；极高风险仍一律拒绝',
+  permissionReviewerPolicyPlaceholder:
+    '例如：本项目禁止执行任何部署命令；src/legacy 下的文件不得删除',
+  permissionReviewerSaveFailed: '评审员配置保存失败',
+  permissionReviewerFirstHint:
+    '评审员只读、无 shell、无网络，且不登记会话级放行（每次调用独立判定）。它只处理白名单之外、或已命中危险规则的调用；放行前会判断这两项：动作固有风险、对话是否授权了这件事',
+  permissionReviewerFloorHint:
+    '不自动放行的情况（直接转人工）：命中磁盘/设备级写入或系统级自修改、已触发熔断；`rm -rf` 与 `bash -c` 等仍交评审员判断，不排除在外',
+
+  // 审批面板 - 帮我审批评审结论
+  permissionReviewerNoticeTitle: '帮我审批',
+  permissionReviewerOutcome: {
+    allow: '自动放行',
+    deny: '自动拒绝',
+    fallback: '已回退人工'
+  },
+  permissionReviewerRisk: {
+    low: '低风险',
+    medium: '中风险',
+    high: '高风险',
+    critical: '极高风险'
+  },
+  permissionReviewerAuth: {
+    unknown: '授权未确认',
+    low: '授权薄弱',
+    medium: '目标已授权',
+    high: '明确授权'
+  },
+  permissionReviewerCoerced: {
+    critical: '极高风险不可自动放行',
+    'unauthorized-high': '高风险但无授权'
+  },
+  permissionReviewerElapsed: (seconds: string) => `${seconds}s`,
+  permissionReviewerNoteLabel: '评审员未能判定',
+  permissionReviewerReviewsLabel: '最近的自动评审',
+  permissionReviewerEmpty: '暂无自动评审记录',
 
   // 设置页 - 图片识别工具（read_img）
   readImgSection: '图片识别工具',

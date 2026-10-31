@@ -34,6 +34,12 @@ export function registerBrowserIpc(browser: BrowserController) {
     return { ok: true };
   });
   ipcMain.handle('pi:browser:capture', () => browser.captureActiveTab());
+  // 标记元素：返回选中元素信息 + 元素矩形截图（取消时 element 为 null）
+  ipcMain.handle('pi:browser:pickElement', (_event, tabId?: string) => browser.pickElement(tabId));
+  ipcMain.handle('pi:browser:cancelPickElement', async (_event, tabId?: string) => {
+    await browser.cancelPickElement(tabId);
+    return { ok: true };
+  });
   ipcMain.handle('pi:browser:clearData', async () => {
     await browser.clearData();
     return { ok: true };

@@ -20,6 +20,7 @@ export function useEventBindings() {
   const setSettingsOpen = usePiStore((s) => s.setSettingsOpen);
   const setAskQuestions = usePiStore((s) => s.setAskQuestions);
   const setPendingPermissionRequest = usePiStore((s) => s.setPendingPermissionRequest);
+  const pushPermissionReview = usePiStore((s) => s.pushPermissionReview);
   const setPlanPendingProposal = usePiStore((s) => s.setPlanPendingProposal);
   const setStats = usePiStore((s) => s.setStats);
 
@@ -74,6 +75,14 @@ export function useEventBindings() {
         .catch(() => {});
     });
   }, [setPendingPermissionRequest]);
+
+  // 监听「帮我审批」评审结论（自动放行/拒绝不需要用户点确认，只展示结论与理由）
+  useEffect(() => {
+    return window.pi.onPermissionReview((notice, identity) => {
+      if (!isCurrentSession(identity)) return;
+      pushPermissionReview(notice);
+    });
+  }, [pushPermissionReview]);
 
   // 监听 plan 提案提交(propose_plan 工具 → 主进程 → 弹评审面板)
   useEffect(() => {

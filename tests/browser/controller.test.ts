@@ -303,3 +303,102 @@ describe('BrowserController', () => {
     await expect(controller.captureActiveTab()).resolves.toBeNull();
   });
 });
+
+describe('BrowserController 标记元素', () => {
+  // 这一组是独立的 describe：不共享外层 beforeEach，必须自己清 views，否则拿到别的用例的视图
+  beforeEach(() => {
+    mocks.views.length = 0;
+    mocks.sent.length = 0;
+  });
+
+  const picked = {
+    tagName: 'div',
+    selector: 'main > div.hero',
+    text: 'PIXEL DEFENSE',
+    html: '<div class="hero">PIXEL DEFENSE</div>',
+    rect: { x: 10, y: 20, width: 100, height: 40 },
+    clip: { x: 10, y: 20, width: 100, height: 40 },
+    styles: { color: 'red', background: 'transparent', font: 'sans-serif', fontSize: '16px' },
+    url: 'https://example.com/',
+    title: 'Example',
+    viewport: { width: 800, height: 600 }
+  };
+
+  it('returns the picked element plus a crop of exactly the element rect', async () => {
+    const controller = new BrowserController();
+    controller.attachWindow(createWindow() as any);
+    await controller.setEnabled(true);
+    await controller.open('example.com');
+    const webContents = mocks.views[0].webContents;
+    webContents.executeJavaScript = vi.fn(async () => picked) as any;
+    let crop: any = null;
+    webContents.capturePage = vi.fn(async (rect: any) => {
+      crop = rect;
+      return {
+        isEmpty: () => false,
+        getSize: () => ({ width: 100, height: 40 }),
+        resize: () => ({
+          getSize: () => ({ width: 100, height: 40 }),
+          toPNG: () => Buffer.from('cropped')
+        }),
+        toPNG: () => Buffer.from('cropped'),
+        toDataURL: () => 'data:image/png;base64,Y3JvcHBlZA=='
+      };
+    }) as any;
+
+    const result = await controller.pickElement();
+    expect(result.element).toEqual(picked);
+    expect(crop).toEqual({ x: 10, y: 20, width: 100, height: 40 });
+    // 截图只截元素矩形：整页截图会白花掉几万 token
+    expect(result.image).toEqual({
+      data: Buffer.from('cropped').toString('base64'),
+      mimeType: 'image/png'
+    });
+  });
+
+  it('treats a cancelled pick as null and skips the screenshot', async () => {
+    const controller = new BrowserController();
+    controller.attachWindow(createWindow() as any);
+    await controller.setEnabled(true);
+    await controller.open('example.com');
+    const webContents = mocks.views[0].webContents;
+    webContents.executeJavaScript = vi.fn(async () => null) as any;
+    const capture = vi.fn();
+    webContents.capturePage = capture as any;
+
+    await expect(controller.pickElement()).resolves.toEqual({ element: null });
+    expect(capture).not.toHaveBeenCalled();
+  });
+
+  it('still returns the element when the screenshot fails', async () => {
+    const controller = new BrowserController();
+    controller.attachWindow(createWindow() as any);
+    await controller.setEnabled(true);
+    await controller.open('example.com');
+    const webContents = mocks.views[0].webContents;
+    webContents.executeJavaScript = vi.fn(async () => picked) as any;
+    webContents.captureEmpty = true;
+
+    const result = await controller.pickElement();
+    expect(result.element).toEqual(picked);
+    // 空图绝不能回传（会让整轮请求 400），退化成「只有元素信息」
+    expect(result.image).toBeUndefined();
+  });
+
+  it('cancels an in-flight picker through the page global', async () => {
+    const controller = new BrowserController();
+    controller.attachWindow(createWindow() as any);
+    await controller.setEnabled(true);
+    await controller.open('example.com');
+    const webContents = mocks.views[0].webContents;
+    const scripts: string[] = [];
+    webContents.executeJavaScript = vi.fn(async (script: string) => {
+      scripts.push(script);
+      return null;
+    }) as any;
+
+    await controller.cancelPickElement();
+    expect(scripts[0]).toContain('__piPicker');
+    expect(scripts[0]).toContain('cancel');
+  });
+});

@@ -46,6 +46,8 @@ function makePi() {
     getCommands: vi.fn(async (): Promise<any[]> => []),
     getTodoPhases: vi.fn(async () => ({ phases: [] as any[] })),
     getPendingInteractions: vi.fn(async () => ({ ask: null, permission: null })),
+    // 切换会话后主动补拉「帮我审批」评审记录（与挂起交互同一套补偿逻辑）
+    getRecentPermissionReviews: vi.fn(async (): Promise<any[]> => []),
     getSessionStats: vi.fn(async (): Promise<any> => ({ cost: 2 })),
     setPlanMode: vi.fn(async () => {}),
     setUiSettings: vi.fn(async () => {}),

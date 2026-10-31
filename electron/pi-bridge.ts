@@ -229,6 +229,7 @@ export class PiBridge {
     slot.permissionController?.restorePolicy?.(this.permissionDefaults.policy);
     slot.permissionController?.restoreAutoSafeConfig?.(this.permissionDefaults.autoSafe);
     slot.permissionController?.restoreClassifierConfig?.(this.permissionDefaults.classifier);
+    slot.permissionController?.restoreReviewerConfig?.(this.permissionDefaults.reviewer);
     slot.controllersReady = true;
     if (this.focusedKey === slot.key) this.mirrorSlotControllers(slot);
   }
@@ -251,6 +252,8 @@ export class PiBridge {
     policy: unknown;
     autoSafe?: unknown;
     classifier?: unknown;
+    /** reviewer-auto「帮我审批」评审员配置 */
+    reviewer?: unknown;
   } = { policy: DEFAULT_PERMISSION_POLICY };
   /** IPC handler 只注册一次，避免重开窗口时 'second handler' 报错 */
   private handlersRegistered = false;
@@ -526,6 +529,12 @@ export class PiBridge {
     if (slot.controllersDisposed) return;
     slot.controllersDisposed = true;
     try {
+      // 权限：释放评审员会话池（复用中的评审会话不随 runtime 销毁，必须显式 dispose）
+      await slot.permissionController?.dispose?.();
+    } catch (error) {
+      console.warn('[pi-bridge] 释放权限控制器失败:', error);
+    }
+    try {
       await slot.memoryController?.dispose();
     } catch (error) {
       console.error('Memory cleanup failed:', error);
@@ -755,7 +764,9 @@ export class PiBridge {
           policy: ui.permissionPolicy ?? DEFAULT_PERMISSION_POLICY,
           autoSafe: ui.permissionAutoSafeConfig,
           // classifier-auto 决策模型配置（providerId/modelId/超时/置信度阈值）
-          classifier: ui.permissionClassifierConfig
+          classifier: ui.permissionClassifierConfig,
+          // reviewer-auto「帮我审批」配置（模型/超时/失败处理/熔断/追加策略/只读工具）
+          reviewer: ui.permissionReviewerConfig
         };
         // read_img 图片识别模型配置恢复
         setReadImgModelConfig(this.normalizeReadImgConfig(ui.readImgModel));

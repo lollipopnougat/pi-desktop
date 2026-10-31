@@ -205,6 +205,29 @@ describe('默认绑定表', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
+  it('会话前进/后退默认是 ⌘[ / ⌘]（与浏览器习惯一致）', () => {
+    expect(DEFAULT_SHORTCUTS['session.back']).toBe('Mod+[');
+    expect(DEFAULT_SHORTCUTS['session.forward']).toBe('Mod+]');
+  });
+
+  it('⌘[ / ⌘] 按物理方括号键匹配（非美式布局的 key 值不同也能命中）', () => {
+    expect(
+      matchesBinding('Mod+[', keyEvent({ code: 'BracketLeft', key: '[', meta: true }), true)
+    ).toBe(true);
+    expect(
+      matchesBinding('Mod+]', keyEvent({ code: 'BracketRight', key: ']', meta: true }), true)
+    ).toBe(true);
+    // 没有修饰键 / 只有 Shift 都不算命中
+    expect(matchesBinding('Mod+[', keyEvent({ code: 'BracketLeft', key: '[' }), true)).toBe(false);
+    expect(
+      matchesBinding(
+        'Mod+[',
+        keyEvent({ code: 'BracketLeft', key: '[', meta: true, shift: true }),
+        true
+      )
+    ).toBe(false);
+  });
+
   it('默认绑定互不冲突', () => {
     const used = new Map<string, string>();
     for (const action of SHORTCUT_ACTIONS) {

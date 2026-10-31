@@ -9,6 +9,8 @@ import { applyTheme } from '../theme/applyTheme';
 import type { PendingFileRequest } from '../types/shared';
 // 流式消息不进 store：逐 token 写入会通知所有订阅者（见 lib/streaming-message.ts）
 import { setStreamingMessage } from '../lib/streaming-message';
+import type { ElementAnnotation } from '../lib/element-annotations';
+import type { QuoteAnnotation } from '../lib/quote-annotations';
 import { scheduleSessionRefresh } from '../lib/session-refresh';
 import { isExtendedMonacoThemeId, type ExtendedMonacoThemeId } from '../lib/monaco-themes';
 import {
@@ -144,8 +146,22 @@ export interface PendingProposal {
 
 export type AgentMode = 'standard' | 'plan' | 'goal';
 
+/**
+ * 会话导航历史的一项（标题栏前进/后退）。
+ * - `target`：`window.pi.switchSession` 的入参——会话文件路径优先，还没落盘的新会话用 sessionId
+ * - `label`：点进去时侧栏给的标题，回退时直接用它填标题区（不再扫盘）
+ */
+export interface SessionNavEntry {
+  target: string;
+  label: string;
+}
+
+/** 导航历史上限（超过丢最早的）：挡住「一下午都在切会话」时的内存增长 */
+export const MAX_SESSION_NAV = 30;
+
 /** 权限沙箱策略（与 electron/permission/policy.ts 同构；经 ui-config.json 持久化） */
-export type PermissionPolicy = 'ask-all' | 'auto-safe' | 'classifier-auto' | 'allow-all';
+export type PermissionPolicy =
+  'ask-all' | 'auto-safe' | 'classifier-auto' | 'reviewer-auto' | 'allow-all';
 
 /**
  * 模型回复期间发送消息的默认投递方式（经 ui-config.json 持久化）：
@@ -164,6 +180,23 @@ export interface PermissionRequest {
   danger?: DangerousBashCheck;
   /** classifier-auto 策略下的决策模型判定（ok=false 表示已回退人工审批） */
   classifier?: ClassifierApprovalVerdict;
+  /** reviewer-auto 策略回退人工时的原因（超时/未配模型/熔断/风险地板） */
+  reviewerNote?: string;
+}
+
+/** 「帮我审批」评审结论（主进程 pi:permissionReview 推送；只展示，不是审批入口） */
+export interface PermissionReviewNotice {
+  id: string;
+  toolName: string;
+  preview: string;
+  outcome: 'allow' | 'deny' | 'fallback';
+  riskLevel?: 'low' | 'medium' | 'high' | 'critical';
+  userAuthorization?: 'unknown' | 'low' | 'medium' | 'high';
+  rationale?: string;
+  note?: string;
+  coerced?: 'critical' | 'unauthorized-high';
+  elapsedMs: number;
+  at: number;
 }
 
 /** 危险命令检测结果（与 electron/permission/policy.ts 同构） */
@@ -304,6 +337,13 @@ export interface PiState {
    * 只含标量，不含聊天内容——后台槽不推消息（见 lib/streaming-message.ts 的按会话分键）。
    */
   sessionSlots: SessionSlotSnapshot[];
+  /**
+   * 会话导航历史（标题栏前进/后退按钮）。只在内存里，不持久化：
+   * 重启后从当前会话重新开始记（历史属于「本次使用过程」，重启后回不到已经关掉的槽）。
+   */
+  sessionNav: SessionNavEntry[];
+  /** 当前落在 sessionNav 的哪一项（-1 = 还没有历史） */
+  sessionNavIndex: number;
   cwd: string;
   sessionName: string | null;
   /** 当前会话标题文本（name 或 firstMessage 摘要），切换会话时由侧栏写入，避免标题区再扫盘 */
@@ -416,6 +456,10 @@ export interface PiState {
   // 本会话内已「本次会话允许」的工具名（内存态，与主进程同步；切换会话清空）
   sessionAllowedTools: string[];
   setSessionAllowedTools: (tools: string[]) => void;
+  /** 最近「帮我审批」的评审结论（新的在前；会话切换清空） */
+  recentPermissionReviews: PermissionReviewNotice[];
+  setRecentPermissionReviews: (list: PermissionReviewNotice[]) => void;
+  pushPermissionReview: (notice: PermissionReviewNotice) => void;
   // MCP 状态弹窗
   mcpStatusOpen: boolean;
   // Goal 模式状态快照（来自主进程 pi:goalUpdate）
@@ -453,6 +497,12 @@ export interface PiState {
   /** 更新会话槽状态投影（推送/主动拉取共用） */
   setSessionSlots: (slots: SessionSlotSnapshot[]) => void;
   setSessionLabel: (label: string | null) => void;
+  /**
+   * 记一条会话导航历史（标题栏前进/后退）。同一会话重复记录只更新标题。
+   * 调用点只有一个：`transitionSession` 成功之后（见 src/lib/session-nav.ts）。
+   */
+  recordSessionNav: (entry: SessionNavEntry) => void;
+  setSessionNavIndex: (index: number) => void;
   setStats: (s: SessionStats | null) => void;
   /** 先清空 stats，再异步拉取当前会话的 token 用量（切换/新建/fork/导航会话后调用） */
   refreshStats: () => void;
@@ -514,6 +564,24 @@ export interface PiState {
   /** 注入聊天输入框文本（设置页“创建技能”等场景使用，ChatInput 消费后清空） */
   pendingChatInput: string | null;
   setPendingChatInput: (v: string | null) => void;
+  /**
+   * 页面元素批注（浏览器「标记元素」→ 输入框上方的卡片，发送时并入提示词）。
+   * 不做会话级重置：它和输入框草稿同性质，切会话不应把用户刚标的东西弄丢。
+   */
+  elementAnnotations: ElementAnnotation[];
+  addElementAnnotation: (annotation: ElementAnnotation) => void;
+  updateElementAnnotation: (id: string, comment: string) => void;
+  removeElementAnnotation: (id: string) => void;
+  clearElementAnnotations: () => void;
+  /**
+   * 对话引用批注（选中 agent 回复里的文字 → 「添加到对话」→ 输入框上方卡片）。
+   * 与元素批注同性质：不属于会话数据，切会话不重置。
+   */
+  quoteAnnotations: QuoteAnnotation[];
+  addQuoteAnnotation: (annotation: QuoteAnnotation) => void;
+  updateQuoteAnnotation: (id: string, comment: string) => void;
+  removeQuoteAnnotation: (id: string) => void;
+  clearQuoteAnnotations: () => void;
   setMcpStatusOpen: (v: boolean) => void;
   // === 键盘快捷键 ===
   /** 动作 id → 绑定串（空串 = 未分配）；持久化到 ui-config.json 的 shortcuts */
@@ -753,6 +821,7 @@ export function normalizeUiSettings(ui: UiSettings): Partial<UiSettings> {
       (value === 'ask-all' ||
         value === 'auto-safe' ||
         value === 'classifier-auto' ||
+        value === 'reviewer-auto' ||
         value === 'allow-all')
     ) {
       patch.permissionPolicy = value;
@@ -843,6 +912,8 @@ const initialState = {
   cwd: '',
   sessionName: null,
   sessionLabel: null,
+  sessionNav: [],
+  sessionNavIndex: -1,
   stats: null,
   commands: [],
   toolExecutions: {},
@@ -917,7 +988,10 @@ const initialPreferences = {
   permissionPolicy: 'auto-safe' as PermissionPolicy,
   pendingPermissionRequest: null,
   sessionAllowedTools: [],
+  recentPermissionReviews: [],
   pendingChatInput: null,
+  elementAnnotations: [],
+  quoteAnnotations: [],
   mcpStatusOpen: false,
   goalSnapshot: null,
   subagentSnapshot: null,
@@ -926,6 +1000,19 @@ const initialPreferences = {
   planPendingProposal: null,
   planLastApproved: null
 };
+
+/**
+ * 把「当前会话」记进导航历史（标题栏前进/后退）。
+ *
+ * 只在 `transitionSession` 成功后调用一次（见 src/lib/session-nav.ts 的两条约定）。
+ * `switchSession` 两种入参都认：已落盘的会话用文件路径，新会话用 sessionId。
+ */
+export function recordCurrentSessionNav(): void {
+  const state = usePiStore.getState();
+  const target = state.sessionFile || state.sessionId;
+  if (!target) return;
+  state.recordSessionNav({ target, label: state.sessionLabel || state.sessionName || '' });
+}
 
 export const usePiStore = create<PiState>((set, get) => ({
   ...initialState,
@@ -988,6 +1075,27 @@ export const usePiStore = create<PiState>((set, get) => ({
       .catch(() => {});
   },
   setSessionSlots: (slots) => set({ sessionSlots: slots }),
+  recordSessionNav: (entry) =>
+    set((s) => {
+      const nav = s.sessionNav;
+      const index = s.sessionNavIndex;
+      // 已经停在同一条会话上（同一会话重拉、回前台、切回来）：只更新标题，不新增历史
+      if (index >= 0 && nav[index]?.target === entry.target) {
+        if (nav[index].label === entry.label) return {};
+        const next = nav.slice();
+        next[index] = { target: entry.target, label: entry.label };
+        return { sessionNav: next };
+      }
+      // 从历史中间跳转过后再打开新会话：丢掉「前进」分支（与浏览器一致）
+      let next = nav.slice(0, index + 1);
+      next.push(entry);
+      if (next.length > MAX_SESSION_NAV) next = next.slice(next.length - MAX_SESSION_NAV);
+      return { sessionNav: next, sessionNavIndex: next.length - 1 };
+    }),
+  setSessionNavIndex: (index) =>
+    set((s) => ({
+      sessionNavIndex: Math.max(0, Math.min(s.sessionNav.length - 1, index))
+    })),
   setSessionInfo: (info) => {
     // 流式消息是模块级状态（见 lib/streaming-message.ts，避免逐 token 写 store 拖累所有订阅者），
     // 切会话时必须一并清空，否则旧会话的流式条会悬留在新会话底部。
@@ -1021,7 +1129,9 @@ export const usePiStore = create<PiState>((set, get) => ({
       pendingPermissionRequest: null,
       // 会话身份变更时清空「本次会话允许」状态（与主进程 clearPending 对齐；
       // 同一 sessionId 重拉（初始化/目录切换）不受影响）
-      sessionAllowedTools: !sameSession(s, info) ? [] : s.sessionAllowedTools
+      sessionAllowedTools: !sameSession(s, info) ? [] : s.sessionAllowedTools,
+      // 评审结论同样属于会话：切走后不应继续展示上一个会话的自动放行记录
+      recentPermissionReviews: !sameSession(s, info) ? [] : s.recentPermissionReviews
     }));
   },
   setSessionLabel: (label: string | null) => set({ sessionLabel: label }),
@@ -1236,6 +1346,9 @@ export const usePiStore = create<PiState>((set, get) => ({
     set({ askQuestions: q, askSessionId: q ? (sessionId ?? null) : null }),
   setPendingPermissionRequest: (r) => set({ pendingPermissionRequest: r }),
   setSessionAllowedTools: (tools) => set({ sessionAllowedTools: tools }),
+  setRecentPermissionReviews: (list) => set({ recentPermissionReviews: list }),
+  pushPermissionReview: (notice) =>
+    set((s) => ({ recentPermissionReviews: [notice, ...s.recentPermissionReviews].slice(0, 20) })),
   setPermissionPolicy: (p) => {
     saveSetting('permissionPolicy', p);
     set({ permissionPolicy: p });
@@ -1243,6 +1356,28 @@ export const usePiStore = create<PiState>((set, get) => ({
     window.pi.setPermissionPolicy(p).catch(() => {});
   },
   setPendingChatInput: (v) => set({ pendingChatInput: v }),
+  addElementAnnotation: (annotation) =>
+    set((s) => ({ elementAnnotations: [...s.elementAnnotations, annotation] })),
+  updateElementAnnotation: (id, comment) =>
+    set((s) => ({
+      elementAnnotations: s.elementAnnotations.map((item) =>
+        item.id === id ? { ...item, comment } : item
+      )
+    })),
+  removeElementAnnotation: (id) =>
+    set((s) => ({ elementAnnotations: s.elementAnnotations.filter((item) => item.id !== id) })),
+  clearElementAnnotations: () => set({ elementAnnotations: [] }),
+  addQuoteAnnotation: (annotation) =>
+    set((s) => ({ quoteAnnotations: [...s.quoteAnnotations, annotation] })),
+  updateQuoteAnnotation: (id, comment) =>
+    set((s) => ({
+      quoteAnnotations: s.quoteAnnotations.map((item) =>
+        item.id === id ? { ...item, comment } : item
+      )
+    })),
+  removeQuoteAnnotation: (id) =>
+    set((s) => ({ quoteAnnotations: s.quoteAnnotations.filter((item) => item.id !== id) })),
+  clearQuoteAnnotations: () => set({ quoteAnnotations: [] }),
   setMcpStatusOpen: (v) => set({ mcpStatusOpen: v }),
   // === 键盘快捷键 ===
   setSessionSearchOpen: (v) => set({ sessionSearchOpen: v }),

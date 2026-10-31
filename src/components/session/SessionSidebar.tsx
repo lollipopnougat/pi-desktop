@@ -8,6 +8,7 @@ import PromptModal from '../common/PromptModal';
 import ConfirmDialog from '../common/ConfirmDialog';
 import ProjectInfoModal from './ProjectInfoModal';
 import Icon from '../common/Icon';
+import Tooltip from '../common/Tooltip';
 import { t } from '../../i18n/zh';
 import { sessionLabel } from '../../lib/session-label';
 import type { SessionGroup } from '../../types/shared';
@@ -407,31 +408,36 @@ export default function SessionSidebar() {
               {t.sessions}
             </span>
             <div className="flex items-center gap-0.5">
-              <button
-                type="button"
-                onClick={() => setSearchOpen(true)}
-                className="flex items-center justify-center rounded-md p-1 text-sm text-od-text-dim transition-colors hover:bg-od-bg-hover hover:text-od-text-bright"
-                title={t.sessionSearch.title}
-                aria-label={t.sessionSearch.title}
-                aria-haspopup="dialog"
-                aria-expanded={searchOpen}
-              >
-                <Icon name="search" className="w-3.5" />
-              </button>
-              <button
-                onClick={handleSortClick}
-                className="flex items-center justify-center rounded-md p-1 text-sm text-od-text-dim transition-colors hover:bg-od-bg-hover hover:text-od-text-bright"
-                title={t.sortSessions}
-              >
-                <Icon name="sort" className="w-3.5" />
-              </button>
-              <button
-                onClick={handleNewSessionInProject}
-                className="flex items-center justify-center rounded-md p-1 text-sm text-od-text-dim transition-colors hover:bg-od-bg-hover hover:text-od-text-bright"
-                title={t.newSessionInProject}
-              >
-                <Icon name="plus" className="w-3.5" />
-              </button>
+              <Tooltip label={t.sessionSearch.title} shortcutId="session.search">
+                <button
+                  type="button"
+                  onClick={() => setSearchOpen(true)}
+                  className="flex items-center justify-center rounded-md p-1 text-sm text-od-text-dim transition-colors hover:bg-od-bg-hover hover:text-od-text-bright"
+                  aria-label={t.sessionSearch.title}
+                  aria-haspopup="dialog"
+                  aria-expanded={searchOpen}
+                >
+                  <Icon name="search" className="w-3.5" />
+                </button>
+              </Tooltip>
+              <Tooltip label={t.sortSessions}>
+                <button
+                  onClick={handleSortClick}
+                  className="flex items-center justify-center rounded-md p-1 text-sm text-od-text-dim transition-colors hover:bg-od-bg-hover hover:text-od-text-bright"
+                  aria-label={t.sortSessions}
+                >
+                  <Icon name="sort" className="w-3.5" />
+                </button>
+              </Tooltip>
+              <Tooltip label={t.newSessionInProject} shortcutId="session.new">
+                <button
+                  onClick={handleNewSessionInProject}
+                  className="flex items-center justify-center rounded-md p-1 text-sm text-od-text-dim transition-colors hover:bg-od-bg-hover hover:text-od-text-bright"
+                  aria-label={t.newSessionInProject}
+                >
+                  <Icon name="plus" className="w-3.5" />
+                </button>
+              </Tooltip>
             </div>
           </div>
 

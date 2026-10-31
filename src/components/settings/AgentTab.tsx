@@ -343,6 +343,16 @@ function PermissionSection() {
   const [classifierTimeout, setClassifierTimeout] = useState('');
   const [classifierMinConfidence, setClassifierMinConfidence] = useState('');
   const [classifierAllowWrite, setClassifierAllowWrite] = useState(false);
+  // 帮我审批（reviewer-auto）：评审模型 + 超时/失败处理/熔断/只读工具/附加策略
+  const [reviewerModels, setReviewerModels] = useState<
+    { provider: string; id: string; name?: string }[]
+  >([]);
+  const [reviewerModelKey, setReviewerModelKey] = useState('');
+  const [reviewerTimeout, setReviewerTimeout] = useState('');
+  const [reviewerOnFailure, setReviewerOnFailure] = useState<'ask-user' | 'deny'>('ask-user');
+  const [reviewerMaxDenials, setReviewerMaxDenials] = useState('');
+  const [reviewerReadOnly, setReviewerReadOnly] = useState(true);
+  const [reviewerPolicy, setReviewerPolicy] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -371,6 +381,30 @@ function PermissionSection() {
     window.pi
       ?.getClassifierModels()
       .then((res) => setClassifierModels(res.models.filter((m) => m.available)))
+      .catch(() => {});
+    window.pi
+      ?.getReviewerApprovalConfig()
+      .then((c) => {
+        setReviewerModelKey(
+          c.providerId && c.modelId ? `${c.providerId}${MODEL_KEY_SEP}${c.modelId}` : ''
+        );
+        setReviewerTimeout(typeof c.timeoutMs === 'number' ? String(c.timeoutMs) : '');
+        setReviewerOnFailure(c.onFailure === 'deny' ? 'deny' : 'ask-user');
+        setReviewerMaxDenials(
+          typeof c.maxConsecutiveDenials === 'number' ? String(c.maxConsecutiveDenials) : ''
+        );
+        setReviewerReadOnly(c.readOnlyTools !== false);
+        setReviewerPolicy(c.extraPolicy ?? '');
+      })
+      .catch(() => {});
+    // 评审员用普通 chat 模型：候选就是「已鉴权可用」的模型清单（与模型选择器同源）
+    window.pi
+      ?.getAvailableModels()
+      .then((list) =>
+        setReviewerModels(
+          (list ?? []).map((m) => ({ provider: m.provider, id: m.id, name: m.name }))
+        )
+      )
       .catch(() => {});
   }, []);
 
@@ -421,6 +455,35 @@ function PermissionSection() {
         );
         setClassifierAllowWrite(c.allowWriteInCwd === true);
       }
+      // 帮我审批（reviewer-auto）配置（同一保存按钮，归一化结果回填）
+      const [rvProviderId, rvModelId] = reviewerModelKey
+        ? reviewerModelKey.split(MODEL_KEY_SEP)
+        : ['', ''];
+      const res3 = await window.pi?.setReviewerApprovalConfig({
+        providerId: rvProviderId || undefined,
+        modelId: rvModelId || undefined,
+        ...(reviewerTimeout.trim() ? { timeoutMs: Number(reviewerTimeout) } : {}),
+        onFailure: reviewerOnFailure,
+        ...(reviewerMaxDenials.trim()
+          ? { maxConsecutiveDenials: Number(reviewerMaxDenials) }
+          : {}),
+        ...(reviewerPolicy.trim() ? { extraPolicy: reviewerPolicy } : {}),
+        readOnlyTools: reviewerReadOnly
+      });
+      if (res3 && !res3.ok) throw new Error(t.permissionReviewerSaveFailed);
+      if (res3?.config) {
+        const c = res3.config;
+        setReviewerModelKey(
+          c.providerId && c.modelId ? `${c.providerId}${MODEL_KEY_SEP}${c.modelId}` : ''
+        );
+        setReviewerTimeout(typeof c.timeoutMs === 'number' ? String(c.timeoutMs) : '');
+        setReviewerOnFailure(c.onFailure === 'deny' ? 'deny' : 'ask-user');
+        setReviewerMaxDenials(
+          typeof c.maxConsecutiveDenials === 'number' ? String(c.maxConsecutiveDenials) : ''
+        );
+        setReviewerReadOnly(c.readOnlyTools !== false);
+        setReviewerPolicy(c.extraPolicy ?? '');
+      }
       showToast(t.permissionWhitelistSaved, { variant: 'success' });
     } catch (e: any) {
       showToast(e?.message || t.permissionWhitelistSaveFailed, { variant: 'error' });
@@ -451,6 +514,24 @@ function PermissionSection() {
       : [])
   ];
 
+  // 评审模型下拉项：空值 = 跟随当前会话模型（默认）；已配但当前不可用的模型额外列出
+  const reviewerModelOptions = [
+    { value: '', label: t.permissionReviewerModelFollow },
+    ...reviewerModels.map((m) => ({
+      value: `${m.provider}${MODEL_KEY_SEP}${m.id}`,
+      label: `${m.name || m.id}（${m.provider}）`
+    })),
+    ...(reviewerModelKey &&
+    !reviewerModels.some((m) => `${m.provider}${MODEL_KEY_SEP}${m.id}` === reviewerModelKey)
+      ? [
+          {
+            value: reviewerModelKey,
+            label: `${reviewerModelKey.split(MODEL_KEY_SEP).join(' / ')}（${t.permissionReviewerModelMissing}）`
+          }
+        ]
+      : [])
+  ];
+
   return (
     <div className="mb-4">
       <div className="mb-2">
@@ -474,6 +555,7 @@ function PermissionSection() {
               { value: 'ask-all', label: t.permissionAskAll },
               { value: 'auto-safe', label: t.permissionAutoSafe },
               { value: 'classifier-auto', label: t.permissionClassifierAuto },
+              { value: 'reviewer-auto', label: t.permissionReviewerAuto },
               { value: 'allow-all', label: t.permissionAllowAll }
             ]}
           />
@@ -599,6 +681,129 @@ function PermissionSection() {
             )}
             <div className="text-xs leading-relaxed text-od-text-dim">
               {t.permissionClassifierFallbackHint}
+            </div>
+          </div>
+        </div>
+
+        {/* 帮我审批（reviewer-auto） */}
+        <div>
+          <div className="text-sm text-od-text-bright">{t.permissionReviewerLabel}</div>
+          <div className="mb-1.5 text-xs text-od-text-dim">{t.permissionReviewerDesc}</div>
+          <div className="space-y-2 rounded border border-od-border-light bg-od-bg px-2.5 py-2">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs text-od-text-bright">
+                {t.permissionReviewerModelLabel}
+              </span>
+              <Dropdown
+                value={reviewerModelKey}
+                onChange={(v) => {
+                  setReviewerModelKey(v);
+                }}
+                triggerClassName={`${DROPDOWN_TRIGGER_CLASS} w-64`}
+                panelWidth="w-96"
+                maxVisibleOptions={12}
+                ariaLabel={t.permissionReviewerModelLabel}
+                options={reviewerModelOptions}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs text-od-text-bright">
+                {t.permissionReviewerTimeoutLabel}
+              </span>
+              <input
+                type="number"
+                value={reviewerTimeout}
+                onChange={(e) => {
+                  setReviewerTimeout(e.target.value);
+                }}
+                placeholder="45000"
+                className={numberInputCls}
+              />
+            </div>
+            <div className="text-xs leading-relaxed text-od-text-dim">
+              {t.permissionReviewerTimeoutHint}
+            </div>
+            {/* 评审要走一次完整模型往返（还可能做一两次只读查证），阈值过小会让评审名存实亡 */}
+            {Number(reviewerTimeout) > 0 && Number(reviewerTimeout) < 15000 && (
+              <div className="flex items-start gap-1.5 rounded border border-od-yellow/30 bg-od-yellow/10 px-2 py-1.5 text-xs leading-relaxed text-od-yellow">
+                <Icon name="warning" className="mt-0.5 w-3 shrink-0" />
+                <span>{t.permissionReviewerTimeoutWarn}</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs text-od-text-bright">
+                {t.permissionReviewerOnFailureLabel}
+              </span>
+              <Dropdown
+                value={reviewerOnFailure}
+                onChange={(v) => setReviewerOnFailure(v === 'deny' ? 'deny' : 'ask-user')}
+                triggerClassName={`${DROPDOWN_TRIGGER_CLASS} w-36`}
+                panelWidth="w-44"
+                ariaLabel={t.permissionReviewerOnFailureLabel}
+                options={[
+                  { value: 'ask-user', label: t.permissionReviewerOnFailureAsk },
+                  { value: 'deny', label: t.permissionReviewerOnFailureDeny }
+                ]}
+              />
+            </div>
+            <div className="text-xs leading-relaxed text-od-text-dim">
+              {t.permissionReviewerOnFailureHint}
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs text-od-text-bright">
+                {t.permissionReviewerMaxDenialsLabel}
+              </span>
+              <input
+                type="number"
+                min={0}
+                max={10}
+                value={reviewerMaxDenials}
+                onChange={(e) => {
+                  setReviewerMaxDenials(e.target.value);
+                }}
+                placeholder="3"
+                className={numberInputCls}
+              />
+            </div>
+            <div className="text-xs leading-relaxed text-od-text-dim">
+              {t.permissionReviewerMaxDenialsHint}
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs text-od-text-bright">
+                {t.permissionReviewerReadOnlyToolsLabel}
+              </span>
+              <Switch
+                checked={reviewerReadOnly}
+                onChange={(v) => setReviewerReadOnly(v)}
+                ariaLabel={t.permissionReviewerReadOnlyToolsLabel}
+              />
+            </div>
+            <div className="text-xs leading-relaxed text-od-text-dim">
+              {t.permissionReviewerReadOnlyToolsHint}
+            </div>
+            <div>
+              <div className="mb-1 text-xs text-od-text-bright">
+                {t.permissionReviewerPolicyLabel}
+              </div>
+              <textarea
+                value={reviewerPolicy}
+                onChange={(e) => {
+                  setReviewerPolicy(e.target.value);
+                }}
+                placeholder={t.permissionReviewerPolicyPlaceholder}
+                rows={3}
+                spellCheck={false}
+                className={textareaCls}
+              />
+              <div className="mt-1 text-xs leading-relaxed text-od-text-dim">
+                {t.permissionReviewerPolicyHint}
+              </div>
+            </div>
+            <div className="text-xs leading-relaxed text-od-text-dim">
+              {t.permissionReviewerFirstHint}
+            </div>
+            <div className="text-xs leading-relaxed text-od-text-dim">
+              {t.permissionReviewerFloorHint}
             </div>
           </div>
         </div>

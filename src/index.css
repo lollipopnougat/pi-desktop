@@ -68,7 +68,9 @@ body,
   height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: rgb(var(--od-bg-alt));
+  /* 轨道一律透明：它只是滚动条外框，不是内容。以前用 bg-alt 填底，在左栏这种「不铺底色、透玻璃」
+   * 的区域会显成一条深色竖带（会话列表右侧），和面板本身割裂。滑块（--od-border）颜色足够区分。 */
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: rgb(var(--od-border));
@@ -420,6 +422,22 @@ html[data-platform='win32'][data-theme$=':light'] body {
 }
 .titlebar-btn:active {
   background: color-mix(in srgb, rgb(var(--od-text)) 16%, transparent);
+}
+/* 禁用态（导航历史的到头/到尾）：置灰、悬浮/按下不再变色，也不显示点击光标。
+   两套写法都要留：`:disabled` 给真的 disabled 按钮，`.titlebar-btn-off` 给 aria-disabled
+   （导航键用它——原生 disabled 不派发 pointer 事件，长按就打不开历史列表了） */
+.titlebar-btn:disabled,
+.titlebar-btn:disabled:hover,
+.titlebar-btn.titlebar-btn-off,
+.titlebar-btn.titlebar-btn-off:hover {
+  background: transparent;
+  color: rgb(var(--od-text-dim));
+  opacity: 0.35;
+  cursor: default;
+}
+.titlebar-btn:disabled:active,
+.titlebar-btn.titlebar-btn-off:active {
+  background: transparent;
 }
 /* 激活态（面板开启）：主题色 tint + 亮文字，玻璃质感 */
 .titlebar-btn.titlebar-btn-active {

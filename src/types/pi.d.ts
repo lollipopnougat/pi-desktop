@@ -923,11 +923,13 @@ interface UiSettings {
   /** 模型回复期间发送消息的默认方式（'steer' = 引导消息 / 'followUp' = 排队消息，默认 steer） */
   streamingSendMode?: 'steer' | 'followUp';
   /** 权限沙箱策略（主进程 PermissionController 同步读同一字段） */
-  permissionPolicy?: 'ask-all' | 'auto-safe' | 'classifier-auto' | 'allow-all';
+  permissionPolicy?: 'ask-all' | 'auto-safe' | 'classifier-auto' | 'reviewer-auto' | 'allow-all';
   /** auto-safe 自定义白名单（安全工具 + bash 命令） */
   permissionAutoSafeConfig?: { safeTools?: string[]; safeBashCommands?: string[] };
   /** 决策模型自动审批配置（providerId/modelId 必须成对） */
   permissionClassifierConfig?: ClassifierApprovalConfig;
+  /** 「帮我审批」评审员配置（reviewer-auto 策略） */
+  permissionReviewerConfig?: ReviewerApprovalConfig;
   /** read_img 图片识别模型（null = 不启用该工具） */
   readImgModel?: { provider: string; modelId: string } | null;
   /** 键盘快捷键：动作 id → 绑定串（空串 = 未分配；缺失的动作走默认值） */
@@ -957,6 +959,27 @@ export interface BrowserViewport {
   y: number;
   width: number;
   height: number;
+}
+
+/** 「标记元素」选中的页面元素（主进程注入 picker 采集） */
+export interface BrowserPickedElement {
+  tagName: string;
+  selector: string;
+  text: string;
+  html: string;
+  rect: { x: number; y: number; width: number; height: number };
+  clip: { x: number; y: number; width: number; height: number };
+  styles: { color: string; background: string; font: string; fontSize: string };
+  url: string;
+  title: string;
+  viewport: { width: number; height: number };
+}
+
+export interface BrowserPickResult {
+  /** null = 用户取消（Esc / 切换标签） */
+  element: BrowserPickedElement | null;
+  /** 元素矩形截图（base64 PNG，不带 data: 前缀）；截不到时为 undefined */
+  image?: { data: string; mimeType: string };
 }
 
 /** 可用视觉模型（getVisionModels 返回） */
@@ -1105,6 +1128,42 @@ export interface ClassifierApprovalConfig {
   minConfidence?: number;
   /** 默认放行工作目录写入：开启后工作目录内的 write/edit 直接放行，不再请决策模型判断 */
   allowWriteInCwd?: boolean;
+}
+
+/**
+ * 「帮我审批」评审员配置（reviewer-auto 策略）。
+ * providerId/modelId 缺省时跟随当前会话模型；两者必须成对，否则整对丢弃。
+ */
+export interface ReviewerApprovalConfig {
+  providerId?: string;
+  modelId?: string;
+  /** 单次评审超时（毫秒，5000~180000，默认 45000） */
+  timeoutMs?: number;
+  /** 评审不可用时：ask-user 回退人工审批（默认）/ deny 直接拒绝 */
+  onFailure?: 'ask-user' | 'deny';
+  /** 连续拒绝多少次后暂停自动评审（0 = 不熔断，1~10，默认 3） */
+  maxConsecutiveDenials?: number;
+  /** 追加到内置安全策略之后的组织/项目特定规则 */
+  extraPolicy?: string;
+  /** 是否给评审员只读查询工具（read/grep/find/ls），默认开 */
+  readOnlyTools?: boolean;
+}
+
+/** 「帮我审批」评审结论（主进程 pi:permissionReview 推送，仅展示用） */
+export interface PermissionReviewNotice {
+  id: string;
+  toolName: string;
+  preview: string;
+  /** allow/deny = 评审员有结论；fallback = 评审员不可用，已回退人工审批 */
+  outcome: 'allow' | 'deny' | 'fallback';
+  riskLevel?: 'low' | 'medium' | 'high' | 'critical';
+  userAuthorization?: 'unknown' | 'low' | 'medium' | 'high';
+  rationale?: string;
+  note?: string;
+  /** 代码层强制改写的痕迹（模型说 allow 但被硬约束改成 deny） */
+  coerced?: 'critical' | 'unauthorized-high';
+  elapsedMs: number;
+  at: number;
 }
 
 /**
@@ -1335,10 +1394,12 @@ export interface PiAPI {
 
   // === 权限沙箱 ===
   /** 查询当前权限策略 */
-  getPermissionPolicy(): Promise<'ask-all' | 'auto-safe' | 'classifier-auto' | 'allow-all'>;
+  getPermissionPolicy(): Promise<
+    'ask-all' | 'auto-safe' | 'classifier-auto' | 'reviewer-auto' | 'allow-all'
+  >;
   /** 设置权限策略（立即生效） */
   setPermissionPolicy(
-    policy: 'ask-all' | 'auto-safe' | 'classifier-auto' | 'allow-all'
+    policy: 'ask-all' | 'auto-safe' | 'classifier-auto' | 'reviewer-auto' | 'allow-all'
   ): Promise<{ ok: boolean; policy?: string; error?: string }>;
   /** 查询 auto-safe 自定义白名单 */
   getAutoSafeConfig(): Promise<{ safeTools?: string[]; safeBashCommands?: string[] }>;
@@ -1353,6 +1414,14 @@ export interface PiAPI {
   setClassifierApprovalConfig(
     config: ClassifierApprovalConfig
   ): Promise<{ ok: boolean; config?: ClassifierApprovalConfig; error?: string }>;
+  /** 查询「帮我审批」评审员配置 */
+  getReviewerApprovalConfig(): Promise<ReviewerApprovalConfig>;
+  /** 设置「帮我审批」评审员配置（归一化后立即生效并持久化） */
+  setReviewerApprovalConfig(
+    config: ReviewerApprovalConfig
+  ): Promise<{ ok: boolean; config?: ReviewerApprovalConfig; error?: string }>;
+  /** 拉最近的评审结论（新的在前；切换会话/刷新后主动补一次） */
+  getRecentPermissionReviews(): Promise<PermissionReviewNotice[]>;
   /** 回传审批决策（allow-session = 本次会话内同名工具自动放行） */
   permissionResponse(
     id: string,
@@ -1373,9 +1442,15 @@ export interface PiAPI {
         danger?: DangerousBashCheck;
         /** classifier-auto 策略下的模型判定（ok=false 表示已回退人工审批） */
         classifier?: ClassifierApprovalVerdict;
+        /** reviewer-auto 策略回退人工时的原因（超时/未配模型/熔断/风险地板） */
+        reviewerNote?: string;
       },
       identity: SessionIdentity
     ) => void
+  ): () => void;
+  /** 订阅「帮我审批」评审结论推送 */
+  onPermissionReview(
+    cb: (notice: PermissionReviewNotice, identity: SessionIdentity) => void
   ): () => void;
 
   // === UI Settings (persisted to ~/.pi-desktop/ui-config.json) ===
@@ -1496,6 +1571,9 @@ export interface PiAPI {
     setVisible(visible: boolean): Promise<{ ok: boolean }>;
     /** 截当前标签画面（data URL）；浮层遮挡时当静态底图用 */
     capture(): Promise<string | null>;
+    /** 标记元素：进入页面内选择模式，等用户点选（Esc/取消时 element 为 null） */
+    pickElement(tabId?: string): Promise<BrowserPickResult>;
+    cancelPickElement(tabId?: string): Promise<{ ok: boolean }>;
     clearData(): Promise<{ ok: boolean }>;
   };
   onBrowserStateChanged(cb: (state: BrowserState) => void): () => void;

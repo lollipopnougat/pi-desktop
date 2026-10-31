@@ -8,6 +8,7 @@ import { BookmarkRail } from './BookmarkRail';
 import { CAPSULE_RESERVED_TOP } from './TodoProgressCapsule';
 import { getTodoProgress } from '../../utils/todo-progress';
 import ChatItemView from './ChatItemView';
+import SelectionAnnotateButton from './SelectionAnnotateButton';
 import StreamingTail from './StreamingTail';
 import PiWelcome from './PiWelcome';
 import TurnChangesCard from './TurnChangesCard';
@@ -289,6 +290,9 @@ export default function ChatStream() {
           onJump={scrollToUserMessage}
         />
       )}
+
+      {/* 选中 agent 回复里的文字 → 选区上方浮出「添加到对话」（全局监听选区，浮层自身定位） */}
+      <SelectionAnnotateButton />
 
       {/* 右侧悬浮「回到最新」按钮：未到底时显示 */}
       {!atBottom && (

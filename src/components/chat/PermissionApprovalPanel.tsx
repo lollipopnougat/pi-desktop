@@ -1,4 +1,4 @@
-import { usePiStore } from '../../store/pi-store';
+import { usePiStore, type PermissionReviewNotice } from '../../store/pi-store';
 import Icon from '../common/Icon';
 import { t } from '../../i18n/zh';
 
@@ -16,9 +16,12 @@ import { t } from '../../i18n/zh';
  *   静默放行 —— 主进程会在会话级放行路径上强制弹审批（危险命令每次都要过目）。
  *
  * 无挂起请求但本会话存在「已会话级放行」的工具时，显示提示条 + 撤销按钮。
+ * 同理，无挂起请求但有「帮我审批」的最近结论时，显示一条结论条（自动放行不需要用户点确认，
+ * 但必须让用户看得见刚才被自动放行/拒绝的是什么），可手动关闭。
  *
  * classifier-auto 策略下只提供单次允许/拒绝，主进程把决策模型的判定随请求推来：
  * 展示在工具名下方，让用户在"模型说安全但置信度不够"时能看出为什么要问。
+ * reviewer-auto 同理：回退人工时带 `reviewerNote` 说明评审员为什么没给出结论。
  */
 
 /** 决策模型判定等级的徽章样式（与危险命令警示区分：这是模型意见，不是 denylist 命中） */
@@ -34,12 +37,75 @@ const CLASSIFIER_LEVEL_ICON: Record<'safe' | 'risky' | 'dangerous', string> = {
   dangerous: 'text-od-red'
 };
 
+/** 评审结论的三态色板（allow 绿 / deny 红 / fallback 黄） */
+const REVIEW_OUTCOME_STYLE: Record<PermissionReviewNotice['outcome'], string> = {
+  allow: 'bg-od-green/15 text-od-green',
+  deny: 'bg-od-red/15 text-od-red',
+  fallback: 'bg-od-yellow/15 text-od-yellow'
+};
+
+/**
+ * 「帮我审批」结论条：一行展示最近一次自动评审的结果。
+ * 自动放行不需要用户点确认（这正是第 5 档的意义），但必须可见、可关闭。
+ */
+function ReviewerNoticeStrip({
+  notice,
+  onDismiss
+}: {
+  notice: PermissionReviewNotice;
+  onDismiss: () => void;
+}) {
+  const detail = notice.note ?? notice.rationale ?? '';
+  return (
+    <div className="flex items-center justify-between rounded-xl border border-od-border-light bg-od-bg-alt px-3 py-1.5">
+      <div className="flex min-w-0 items-center gap-2">
+        <Icon name="reviewer" size="xs" className="shrink-0 text-od-cyan" />
+        <span className="shrink-0 text-xs text-od-text-dim">
+          {t.permissionReviewerNoticeTitle}
+        </span>
+        <span
+          className={`shrink-0 rounded px-1.5 py-0.5 text-xs ${REVIEW_OUTCOME_STYLE[notice.outcome]}`}
+        >
+          {t.permissionReviewerOutcome[notice.outcome]}
+        </span>
+        <span className="shrink-0 rounded bg-od-bg-hover px-1.5 py-0.5 text-xs font-medium text-od-text-bright">
+          {notice.toolName}
+        </span>
+        {notice.riskLevel && (
+          <span className="shrink-0 text-xs text-od-text-dim">
+            {t.permissionReviewerRisk[notice.riskLevel]}
+          </span>
+        )}
+        {notice.coerced && (
+          <span className="inline-flex shrink-0 items-center gap-1 text-xs text-od-yellow">
+            <Icon name="warning" className="w-3 shrink-0" />
+            {t.permissionReviewerCoerced[notice.coerced]}
+          </span>
+        )}
+        {detail && <span className="truncate text-xs text-od-text-dim">{detail}</span>}
+        <span className="shrink-0 text-xs text-od-text-dim">
+          {t.permissionReviewerElapsed((notice.elapsedMs / 1000).toFixed(1))}
+        </span>
+      </div>
+      <button
+        onClick={onDismiss}
+        className="ml-2 flex h-5 w-5 shrink-0 items-center justify-center rounded text-od-text-dim hover:bg-od-bg-hover hover:text-od-text-bright"
+        title={t.permissionReviewerReviewsLabel}
+      >
+        <Icon name="close" size="xs" />
+      </button>
+    </div>
+  );
+}
+
 export default function PermissionApprovalPanel() {
   const request = usePiStore((s) => s.pendingPermissionRequest);
   const setPendingPermissionRequest = usePiStore((s) => s.setPendingPermissionRequest);
   const sessionAllowedTools = usePiStore((s) => s.sessionAllowedTools);
   const setSessionAllowedTools = usePiStore((s) => s.setSessionAllowedTools);
   const permissionPolicy = usePiStore((s) => s.permissionPolicy);
+  const recentReviews = usePiStore((s) => s.recentPermissionReviews);
+  const setRecentPermissionReviews = usePiStore((s) => s.setRecentPermissionReviews);
 
   /** 回传决策（allow-session 时本地同步登记，避免等主进程回包的窗口期） */
   const respond = (decision: 'allow' | 'deny' | 'allow-session') => {
@@ -59,24 +125,34 @@ export default function PermissionApprovalPanel() {
     setSessionAllowedTools([]);
   };
 
-  // 无挂起请求：若本会话有已放行工具，显示可撤销提示条；否则不渲染
+  // 无挂起请求：显示最近一次评审结论 +（可选）本会话已放行提示条；两者都无则不渲染
   if (!request) {
-    if (permissionPolicy === 'classifier-auto' || sessionAllowedTools.length === 0) return null;
+    const latest = recentReviews[0];
+    const showSessionStrip =
+      permissionPolicy !== 'classifier-auto' && sessionAllowedTools.length > 0;
+    if (!latest && !showSessionStrip) return null;
     return (
-      <div className="mb-2 flex items-center justify-between rounded-xl border border-od-border-light bg-od-bg-alt px-3 py-1.5">
-        <div className="flex min-w-0 items-center gap-2">
-          <Icon name="unlock" size="xs" className="text-od-green" />
-          <span className="truncate text-xs text-od-text-dim">
-            {t.permissionSessionAllowed(toolsLabel(sessionAllowedTools))}
-          </span>
-        </div>
-        <button
-          onClick={revokeSessionAllow}
-          className="ml-2 flex-shrink-0 rounded px-2 py-0.5 text-xs text-od-text-dim transition-colors hover:bg-od-bg-hover hover:text-od-text-bright"
-          title={t.permissionSessionRevokeDesc}
-        >
-          {t.permissionSessionRevoke}
-        </button>
+      <div className="mb-2 space-y-1.5">
+        {latest && (
+          <ReviewerNoticeStrip notice={latest} onDismiss={() => setRecentPermissionReviews([])} />
+        )}
+        {showSessionStrip && (
+          <div className="flex items-center justify-between rounded-xl border border-od-border-light bg-od-bg-alt px-3 py-1.5">
+            <div className="flex min-w-0 items-center gap-2">
+              <Icon name="unlock" size="xs" className="text-od-green" />
+              <span className="truncate text-xs text-od-text-dim">
+                {t.permissionSessionAllowed(toolsLabel(sessionAllowedTools))}
+              </span>
+            </div>
+            <button
+              onClick={revokeSessionAllow}
+              className="ml-2 flex-shrink-0 rounded px-2 py-0.5 text-xs text-od-text-dim transition-colors hover:bg-od-bg-hover hover:text-od-text-bright"
+              title={t.permissionSessionRevokeDesc}
+            >
+              {t.permissionSessionRevoke}
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -164,6 +240,17 @@ export default function PermissionApprovalPanel() {
               ))}
           </div>
         )}
+        {request.reviewerNote && (
+          <div className="mb-1.5 flex flex-wrap items-center gap-2 text-xs">
+            <Icon name="reviewer" className="w-3 shrink-0 text-od-cyan" />
+            <span className="text-od-text-dim">{t.permissionReviewerNoteLabel}</span>
+            {/* 回退原因用警示色完整显示（超时/未配模型/熔断/不可自动放行的危险类目） */}
+            <span className="inline-flex items-center gap-1 text-od-yellow">
+              <Icon name="warning" className="w-3 shrink-0" />
+              {request.reviewerNote}
+            </span>
+          </div>
+        )}
         {request.preview && (
           /* 超长命令不截断：给一个限高 + 滚动条，完整命令靠滚动查看 */
           <pre
@@ -190,7 +277,9 @@ export default function PermissionApprovalPanel() {
         >
           {t.permissionAllow}
         </button>
-        {!request.classifier && (
+        {/* 「本次会话允许」仅在人工策略下提供：classifier-auto / reviewer-auto 里它等于把
+            自动判定整个绕开（第 5 档会被退化成 allow-all 的子集） → 只给单次允许/拒绝 */}
+        {!request.classifier && permissionPolicy !== 'reviewer-auto' && (
           <button
             onClick={() => respond('allow-session')}
             className="rounded bg-od-accent px-3 py-1 text-xs text-white transition-colors hover:bg-od-accent/80 active:bg-od-accent/65"

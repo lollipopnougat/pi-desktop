@@ -23,7 +23,14 @@ import {
   formatNetworkList
 } from './traffic';
 import { BROWSER_BLANK_URL, isAllowedBrowserUrl, normalizeBrowserInput } from './url';
-import type { BrowserSnapshot, BrowserState, BrowserTabState, BrowserViewport } from './types';
+import { buildCancelScript, buildPickerScript, type PickedElement } from './picker';
+import type {
+  BrowserPickResult,
+  BrowserSnapshot,
+  BrowserState,
+  BrowserTabState,
+  BrowserViewport
+} from './types';
 import type { DebuggerHost, NetworkListOptions, TrafficState } from './traffic';
 
 const BROWSER_PARTITION = 'persist:pi-browser';
@@ -31,6 +38,11 @@ const MAX_SNAPSHOT_TEXT = 30_000;
 const MAX_SNAPSHOT_ELEMENTS = 200;
 
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** 元素选择的等待上限：用户可能一直不点，主进程不能永久挂着一个 promise */
+const PICK_TIMEOUT_MS = 180_000;
+/** 元素截图的最长边：标注缩略图用不上原尺寸，省 token */
+const MAX_ELEMENT_IMAGE_WIDTH = 1_200;
 
 export function normalizeBrowserTabId(tabId: string): string {
   return tabId.startsWith('browser:') ? tabId.slice('browser:'.length) : tabId;
@@ -373,6 +385,97 @@ export class BrowserController {
       );
     }
     return { data, mimeType: 'image/png' };
+  }
+
+  /**
+   * 「帮我看看这个元素」：进入页面内元素选择模式，等用户点击（Esc 取消）。
+   *
+   * 两个刻意的设计：
+   * - **不要求 devtools 开关**：点选是普通交互，不是「执行任意 JS + CDP 抓包」那种能力；
+   *   否则用户为了标一个按钮还得先开一个高风险开关。
+   * - 截图失败不影响元素信息：缩略图只是锦上添花，拿不到就不带图（空图会被上游拒）。
+   */
+  async pickElement(tabId?: string, timeoutMs = PICK_TIMEOUT_MS): Promise<BrowserPickResult> {
+    const tab = this.resolveTab(tabId);
+    const picked = await this.runPicker(tab, timeoutMs);
+    if (!picked) return { element: null };
+    let image: { data: string; mimeType: string } | undefined;
+    try {
+      image = await this.captureRect(tab, picked.clip);
+    } catch {
+      image = undefined;
+    }
+    return { element: picked, image };
+  }
+
+  /** 结束进行中的元素选择（再次点按钮 / 切换标签时用），没有在选择时是空操作 */
+  async cancelPickElement(tabId?: string): Promise<void> {
+    let tab;
+    try {
+      tab = this.resolveTab(tabId);
+    } catch {
+      return;
+    }
+    try {
+      await tab.view.webContents.executeJavaScript(buildCancelScript());
+    } catch {
+      /* 页面已导航/销毁：picker 随之消失，无需处理 */
+    }
+  }
+
+  /** 元素矩形截图：capturePage(rect) 只回读该区域，比整页截图省一大截 token */
+  private async captureRect(
+    tab: BrowserTab,
+    rect: { x: number; y: number; width: number; height: number }
+  ): Promise<{ data: string; mimeType: string }> {
+    if (rect.width < 1 || rect.height < 1) throw new Error('元素不在可视区域内，无法截图');
+    // capturePage 吃的是视图 DIP，而 rect 是页面 CSS 像素：缩放不为 1 时必须换算
+    const contents = tab.view.webContents as typeof tab.view.webContents & {
+      getZoomFactor?: () => number;
+    };
+    const zoom = typeof contents.getZoomFactor === 'function' ? contents.getZoomFactor() || 1 : 1;
+    const crop = {
+      x: Math.round(rect.x * zoom),
+      y: Math.round(rect.y * zoom),
+      width: Math.max(1, Math.round(rect.width * zoom)),
+      height: Math.max(1, Math.round(rect.height * zoom))
+    };
+    let image = await tab.view.webContents.capturePage(crop);
+    if (image.isEmpty()) {
+      // 与整页截图一样：刚显隐/首帧未合成时回读会空一次
+      await delay(CAPTURE_RETRY_DELAY_MS);
+      image = await tab.view.webContents.capturePage(crop);
+    }
+    if (image.isEmpty()) throw new Error('元素截图是空图');
+    const size = image.getSize();
+    if (size.width > MAX_ELEMENT_IMAGE_WIDTH) {
+      image = image.resize({ width: MAX_ELEMENT_IMAGE_WIDTH, quality: 'good' });
+    }
+    const data = image.toPNG().toString('base64');
+    if (!data) throw new Error('元素截图编码为空');
+    return { data, mimeType: 'image/png' };
+  }
+
+  /** 注入 picker 并等结果；超时或页面导航都当作「取消」 */
+  private async runPicker(tab: BrowserTab, timeoutMs: number): Promise<PickedElement | null> {
+    const execution = tab.view.webContents.executeJavaScript(buildPickerScript());
+    execution.catch(() => {});
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const watchdog = new Promise<null>((resolve) => {
+      timer = setTimeout(() => {
+        // 先把页面里的浮层收掉，再把这次等待当成取消（不报错，用户只是没选）
+        void tab.view.webContents.executeJavaScript(buildCancelScript()).catch(() => {});
+        resolve(null);
+      }, timeoutMs);
+    });
+    try {
+      const result = await Promise.race([execution as Promise<PickedElement | null>, watchdog]);
+      return result ?? null;
+    } catch {
+      return null;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   async click(tabId: string | undefined, ref: string): Promise<void> {

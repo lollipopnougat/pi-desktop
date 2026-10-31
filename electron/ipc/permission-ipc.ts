@@ -3,9 +3,12 @@
  * - pi:getPermissionPolicy / pi:setPermissionPolicy：查询/设置策略（立即生效）
  * - pi:getAutoSafeConfig / pi:setAutoSafeConfig：查询/设置 auto-safe 自定义白名单
  * - pi:getClassifierApprovalConfig / pi:setClassifierApprovalConfig：查询/设置决策模型自动审批配置
+ * - pi:getReviewerApprovalConfig / pi:setReviewerApprovalConfig：查询/设置「帮我审批」评审员配置
+ * - pi:getRecentPermissionReviews：拉最近的评审结论（切换会话/刷新后主动补一次）
  * - pi:permissionResponse：渲染进程回传审批决策（allow / deny / allow-session）
  * - pi:getSessionAllowedTools / pi:clearSessionAllowedTools：查询/清空「本次会话允许」工具列表
  * - pi:permissionRequest（事件）：主进程 → 渲染进程推送审批请求
+ * - pi:permissionReview（事件）：主进程 → 渲染进程推送评审结论
  */
 import { ipcMain } from 'electron';
 import type { PiBridge } from '../pi-bridge';
@@ -52,6 +55,27 @@ export function registerPermissionIpc(ctx: PiBridge) {
       const { readUiSettingsForMain, writeUiSettingsForMain } = await import('./settings-ipc');
       const current = readUiSettingsForMain();
       writeUiSettingsForMain({ ...current, permissionClassifierConfig: saved });
+      return { ok: true, config: saved };
+    } catch (err) {
+      return { ok: false, error: String(err) };
+    }
+  });
+
+  ipcMain.handle('pi:getRecentPermissionReviews', async () => {
+    return ctx.permissionController.getRecentReviews();
+  });
+
+  ipcMain.handle('pi:getReviewerApprovalConfig', async () => {
+    return ctx.permissionController.getReviewerConfig();
+  });
+
+  ipcMain.handle('pi:setReviewerApprovalConfig', async (_e, config: unknown) => {
+    try {
+      const saved = ctx.permissionController.setReviewerConfig(config);
+      // 同步持久化到 ui-config.json（与 permissionClassifierConfig 同一条路径）
+      const { readUiSettingsForMain, writeUiSettingsForMain } = await import('./settings-ipc');
+      const current = readUiSettingsForMain();
+      writeUiSettingsForMain({ ...current, permissionReviewerConfig: saved });
       return { ok: true, config: saved };
     } catch (err) {
       return { ok: false, error: String(err) };
