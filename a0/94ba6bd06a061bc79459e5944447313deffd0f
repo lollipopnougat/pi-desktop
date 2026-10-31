@@ -1,0 +1,33 @@
+tests/permission/policy.test.ts
+  s_9803825d2c1a63::t_2dafde02aee6a0 418-419
+tests/memory/reliability.test.ts
+  s_9803825d2c1a63::t_632e720e855d72 92-98,478-482
+electron/background-tasks/registry.ts
+  s_9803825d2c1a63::t_b693412808018b 93-96
+tests/statistics/scan.test.ts
+  s_9803825d2c1a63::t_513de35c0313d4 188,199-208
+  s_9803825d2c1a63::t_257bedeaa907df 209-211
+tests/external-apps.test.ts
+  s_9803825d2c1a63::t_b35dc80cd4c612 4-30,40,42-45,108,187,210-216,306-308
+tests/classifier/ipc.test.ts
+  s_9803825d2c1a63::t_6932892d418d2e 3,170
+tests/git-ai/extension.test.ts
+  s_9803825d2c1a63::t_4dcffe9363f6df 140
+  s_9803825d2c1a63::t_faa18c5fb8b03b 11,131-132,134,139
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a094ba6bd06a061bc79459e5944447313deffd0f",
+  "prompts": {},
+  "sessions": {
+    "s_9803825d2c1a63": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a17e7e-7bd8-73b8-b60c-c2286ea53435",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "lollipopnougat <ab2defg145@gmail.com>"
+    }
+  }
+}
