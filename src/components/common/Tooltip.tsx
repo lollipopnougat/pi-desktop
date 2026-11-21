@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { usePiStore } from '../../store/pi-store';
 import { formatBinding, type ShortcutActionId } from '../../lib/shortcuts';
+import Kbd from './Kbd';
 
 /** 悬停多久后出现：太短会跟着鼠标乱闪，太长会让人以为没有提示 */
 const SHOW_DELAY_MS = 280;
@@ -118,11 +119,7 @@ export default function Tooltip({
           }
         >
           <span>{label}</span>
-          {keys && (
-            <kbd className="rounded border border-od-border bg-od-bg-hover px-1 py-px font-mono text-xs leading-tight text-od-text">
-              {keys}
-            </kbd>
-          )}
+          {keys && <Kbd tone="bright">{keys}</Kbd>}
         </div>
       )}
     </span>

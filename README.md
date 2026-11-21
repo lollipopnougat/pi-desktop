@@ -111,7 +111,7 @@
 
 ### Git 与改动溯源
 
-- 分支显示与切换（聊天区与状态栏）
+- 分支显示与切换（聊天区与状态栏）；非 Git 项目在「非 Git 仓库」右侧提供一键 `git init` 建仓库按钮
 - **git-ai 改动溯源**：把 edit / write / bash 的 checkpoint 上报给 `git-ai`，使 `git-ai log` / `blame` 能区分 AI 与人工改动；设置页可开关、指定二进制路径、限定上报范围（全部 / 仅文件 / 仅 shell）
 
 ### 视觉能力

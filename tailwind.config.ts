@@ -44,6 +44,20 @@ module.exports = {
       },
       animation: {
         'gradient-flow': 'gradient-flow 8s ease-in-out infinite'
+      },
+      fontFamily: {
+        // 键帽（Kbd 组件）专用：比例系统字体，不跟随设置页 UI 字体（默认 SF Mono 等宽）。
+        // 字重与对齐由 tabular-nums + tracking-wide 配合，见 src/components/common/Kbd.tsx
+        kbd: [
+          '-apple-system',
+          'BlinkMacSystemFont',
+          'SF Pro Text',
+          'Segoe UI Variable',
+          'Segoe UI',
+          'PingFang SC',
+          'Microsoft YaHei',
+          'sans-serif'
+        ]
       }
     }
   },

@@ -1376,6 +1376,8 @@ export interface PiAPI {
     branches: { name: string; current: boolean }[];
   }>;
   gitSwitchBranch(branch: string, cwd?: string): Promise<{ ok: boolean; error?: string }>;
+  /** 在当前项目执行 `git init`（非 Git 项目一键建仓库） */
+  gitInit(cwd?: string): Promise<{ ok: boolean; error?: string }>;
   /** 跨平台取路径最后一段（项目名/目录名），等价于 node path.basename */
   baseName(p: string): Promise<string>;
   getCwd(): Promise<string>;

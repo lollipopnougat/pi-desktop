@@ -11,6 +11,7 @@ import {
   type SearchSession
 } from '../../utils/session-search';
 import Icon from '../common/Icon';
+import Kbd from '../common/Kbd';
 import { t } from '../../i18n/zh';
 
 interface SessionSearchModalProps {
@@ -157,12 +158,9 @@ export default function SessionSearchModal({ onClose, onSelect }: SessionSearchM
             <span className="mt-1 block truncate text-xs text-od-text-dim">{snippet}</span>
           )}
         </span>
-        <kbd
-          aria-hidden="true"
-          className={`shrink-0 rounded-md border border-od-border-light px-1.5 py-0.5 text-xs text-od-text-dim ${active ? '' : 'invisible'}`}
-        >
+        <Kbd aria-hidden="true" className={active ? '' : 'invisible'}>
           {t.sessionSearch.openKey}
-        </kbd>
+        </Kbd>
       </button>
     );
   };

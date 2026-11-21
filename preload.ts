@@ -199,6 +199,7 @@ const piAPI = {
   // === Git ===
   gitStatus: (cwd?: string) => ipcRenderer.invoke('pi:gitStatus', cwd),
   gitBranches: (cwd?: string) => ipcRenderer.invoke('pi:gitBranches', cwd),
+  gitInit: (cwd?: string) => ipcRenderer.invoke('pi:gitInit', cwd),
   gitSwitchBranch: (branch: string, cwd?: string) =>
     ipcRenderer.invoke('pi:gitSwitchBranch', branch, cwd),
   // 跨平台 basename（renderer 无法直接用 node path）

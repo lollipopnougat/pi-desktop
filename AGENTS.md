@@ -245,6 +245,7 @@ Electron 主进程 (electron/)
 ### 样式
 
 - 用 Tailwind class，颜色用 `od-*` 色板（`text-od-text-bright`、`bg-od-bg-alt` 等），不要硬编码 hex
+- **键盘按键（keycap）统一用 `src/components/common/Kbd.tsx`**，不要另写 `<kbd>` 或复制胶囊 class：字体走 `tailwind.config.ts` 的 `font-kbd`（比例系统字体栈，**刻意不跟随设置页 UI 字体**——`⌘/⇧/⌥/⌫` 在等宽字体里笔画发虚）、`text-sm` 字号随全局字号缩放，配 `tabular-nums` + `tracking-wide`。设置页的绑定胶囊按钮（可编辑的那个）也要带 `font-kbd text-sm` 保持一致
 - **折叠区块统一用 `src/components/common/Disclosure.tsx`**（收起 `chevronRight` / 展开 `chevronDown`）：面板类 UI 禁止直接用原生 `<details>`——各平台/浏览器画出的三角标记（`▶`/`⌄`）样式不一，且不在 FontAwesome 图标体系里。该组件的标题也做了宽度保护（标题 `max-w-[60%]`、右侧元信息 `truncate`），窄面板下不会把标题挤没
 - **禁用任意值固定字号类名**（如 `text-[10px]`、`text-[11px]`）：设置页提供全局字号调节（改写 `html { font-size }`，rem 基准），固定 px 字号不随设置缩放，会导致 UI 尺度不一致。一律用 Tailwind 字号阶梯（`text-xs`、`text-sm` 等，均为 rem 单位）；确需更小字号时用 `text-[0.7rem]` 这类 rem 任意值
 - 弹窗避开 macOS 标题栏（38px）/其他平台（32px）：`fixed inset-0` 容器加 `paddingTop` + `flex flex-col`，子元素 `flex-1 min-h-0`。**这不只是视觉约定**：标题栏是 40px 的 `-webkit-app-region: drag` 区，落在带内的可点控件会被吞掉点击、光标也不显示小手（详见「重要注意事项」末条）
