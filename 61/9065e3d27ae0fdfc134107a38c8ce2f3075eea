@@ -1,0 +1,31 @@
+package-lock.json
+  s_15c203b189752a::t_c980a683325a68 3,9
+package.json
+  s_15c203b189752a::t_84f5e61c7836da 3
+tailwind.config.ts
+  s_9803825d2c1a63::t_ce3e3144df01aa 47-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "619065e3d27ae0fdfc134107a38c8ce2f3075eea",
+  "prompts": {},
+  "sessions": {
+    "s_15c203b189752a": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a1fed2-eb67-74c1-8033-13f7d89cbd4c",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "lollipopnougat <ab2defg145@gmail.com>"
+    },
+    "s_9803825d2c1a63": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a17e7e-7bd8-73b8-b60c-c2286ea53435",
+        "model": "deepseek-v4.1-flash"
+      },
+      "human_author": "lollipopnougat <ab2defg145@gmail.com>"
+    }
+  }
+}
