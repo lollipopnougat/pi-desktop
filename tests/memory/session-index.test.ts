@@ -63,7 +63,10 @@ function writeSession(
   messages: Msg[],
   opts: { dir?: string; extra?: Record<string, unknown> } = {}
 ): string {
-  const dirName = opts.dir ?? `--${projectCwd.replace(/\//g, '-')}--`;
+  // 与 SDK 的会话目录命名保持一致（session-manager.js: `--${cwd.replace(/^[/\\]/, '').replace(/[/\\:]/g, '-')}--`）：
+  // 必须先去掉开头分隔符、再把 `/` `\` `:` 全部换成 `-`。少了 `:` 在 Windows 上会拼出
+  // `--C:\Users\...--` 这种非法目录名，mkdir 直接 ENOENT。
+  const dirName = opts.dir ?? `--${projectCwd.replace(/^[/\\]/, '').replace(/[/\\:]/g, '-')}--`;
   const dir = path.join(sessionsDir, dirName);
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `${id}.jsonl`);

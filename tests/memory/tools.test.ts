@@ -14,8 +14,15 @@ beforeEach(() => {
   previous = process.env.PI_MEMORY_DIR;
   process.env.PI_MEMORY_DIR = root;
 });
-afterEach(() => {
-  fs.rmSync(root, { recursive: true, force: true });
+afterEach(async () => {
+  // SQLite 句柄必须先关：index.db 就建在 root 里，Windows 下打开中的文件删不掉（EPERM）
+  const [{ resetSessionIndexStateForTests }, { resetMemoryIndexStateForTests }] = await Promise.all([
+    import('../../electron/memory/session-index'),
+    import('../../electron/memory/search-index')
+  ]);
+  resetSessionIndexStateForTests();
+  resetMemoryIndexStateForTests();
+  fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   if (previous === undefined) delete process.env.PI_MEMORY_DIR;
   else process.env.PI_MEMORY_DIR = previous;
 });

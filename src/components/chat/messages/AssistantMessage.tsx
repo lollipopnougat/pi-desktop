@@ -79,14 +79,16 @@ function AssistantMessage({
       <div className="space-y-2">
         {content.map((block: any, i: number) => {
           if (block.type === 'text') {
+            // data-annotatable：选中这段文字时浮出「添加到对话」（SelectionAnnotateButton 只认这个标记）
             return (
-              <Markdown
-                key={i}
-                content={block.text}
-                openLinksInBrowser
-                // 只有「本块正在增长」才走流式分块渲染：闭合的块仍整篇高亮
-                streaming={isStreaming && i === content.length - 1}
-              />
+              <div key={i} data-annotatable="assistant">
+                <Markdown
+                  content={block.text}
+                  openLinksInBrowser
+                  // 只有「本块正在增长」才走流式分块渲染：闭合的块仍整篇高亮
+                  streaming={isStreaming && i === content.length - 1}
+                />
+              </div>
             );
           }
           if (block.type === 'thinking') {

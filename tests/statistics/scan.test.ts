@@ -185,16 +185,27 @@ describe('历史会话用量扫描', () => {
     expect(result.totals.cost).toBeCloseTo(0.3);
   });
 
-  it('损坏行和未写完的末行不阻断其他记录，不读取符号链接', async () => {
+  it('损坏行和未写完的末行不阻断其他记录', async () => {
     const file = await session('a.jsonl', [header('a'), message('one')]);
     await appendFile(file, 'not-json\n{"type":"message"');
     await session('invalid.jsonl', [message('no-header')]);
-    await symlink(file, path.join(root, 'linked.jsonl'));
-    await symlink(root, path.join(root, 'cycle'));
     const result = await scanUsageStatistics(root, query);
     expect(result.totals.records).toBe(1);
     expect(result.invalidLines).toBe(2);
     expect(result.skippedFiles).toBe(1);
+    expect(result.duplicateRecords).toBe(0);
+  });
+
+  // Windows 未开开发者模式时无法创建符号链接（EPERM），目录 junction 也不适用于文件链接，
+  // 因此该用例只在能真正建链的平台跑。discover 用 readdir(withFileTypes) 时链接既非 file
+  // 也非 directory，不会进入扫描列表——这正是要锁定的行为。
+  it.skipIf(process.platform === 'win32')('不读取符号链接与循环链接', async () => {
+    const file = await session('a.jsonl', [header('a'), message('one')]);
+    await symlink(file, path.join(root, 'linked.jsonl'));
+    await symlink(root, path.join(root, 'cycle'));
+    const result = await scanUsageStatistics(root, query);
+    expect(result.totals.records).toBe(1);
+    expect(result.skippedFiles).toBe(0);
     expect(result.duplicateRecords).toBe(0);
   });
 

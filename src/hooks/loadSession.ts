@@ -1,4 +1,4 @@
-import { usePiStore } from '../store/pi-store';
+import { recordCurrentSessionNav, usePiStore } from '../store/pi-store';
 import { sameSession, type SessionIdentity } from '../types/session';
 import { mergeSessionMessages } from '../utils/session-messages';
 import { t } from '../i18n/zh';
@@ -84,6 +84,10 @@ async function refreshSession(version: number, label?: string): Promise<void> {
           .getState()
           .setAskQuestions(pending?.ask?.questions ?? null, pending?.ask?.sessionId ?? null);
         usePiStore.getState().setPendingPermissionRequest(pending?.permission ?? null);
+      }),
+      // 评审结论同理：后台槽的事件不推渲染进程，切过去后主动补一次最近记录
+      window.pi.getRecentPermissionReviews().then((list) => {
+        if (current()) usePiStore.getState().setRecentPermissionReviews(list ?? []);
       })
     ].map((promise) =>
       promise.catch((error) => console.error('Failed to refresh session data:', error))
@@ -95,10 +99,16 @@ async function refreshSession(version: number, label?: string): Promise<void> {
   }
 }
 
-/** 所有 UI 入口共用的切换事务。后发请求使旧加载失效，主进程操作不会交错。 */
+/** 所有 UI 入口共用的切换事务。后发请求使旧加载失效，主进程操作不会交错。
+ *
+ * @param options.recordNav 默认 true：切完把新会话压入导航历史（标题栏前进/后退）。
+ *   `navigateSessionHistory` 必须在后退/前进时传 false，否则后退键会把「退回来的那个会话」
+ *   当成一次新导航再压一条，历史变成环。
+ */
 export function transitionSession(
   operation: () => Promise<unknown>,
-  label?: string
+  label?: string,
+  options?: { recordNav?: boolean }
 ): Promise<boolean> {
   const version = usePiStore.getState().sessionLoadVersion + 1;
   usePiStore.setState({
@@ -124,6 +134,9 @@ export function transitionSession(
       usePiStore.setState({ mode: 'standard' });
       // 失败/取消时也重读主进程，恢复显示仍然生效的会话。
       await refreshSession(version, succeeded ? label : undefined);
+      // 导航历史只在切换成功后记（失败时停在原会话，不该多一条历史）；
+      // 前进/后退自己传 recordNav:false 跳过（见 src/lib/session-nav.ts）
+      if (succeeded && options?.recordNav !== false && current()) recordCurrentSessionNav();
       return current() && succeeded;
     } catch (error) {
       if (current()) {

@@ -415,7 +415,8 @@ describe('isSafeToolCall：工作目录内的 write/edit（auto-safe 免审批�
     mkdirSync(outside, { recursive: true });
     writeFileSync(join(outside, 'secret.txt'), 'x');
     // 仓库内指向工作目录之外的符号链接（write 会沿链接落盘）
-    symlinkSync(outside, join(proj, 'link'), 'dir');
+    // Windows 未开开发者模式时创建 'dir' 类型链接会 EPERM，junction 不需要特权且同样是重解析点。
+    symlinkSync(outside, join(proj, 'link'), process.platform === 'win32' ? 'junction' : 'dir');
   });
   afterAll(() => {
     rmSync(root, { recursive: true, force: true });

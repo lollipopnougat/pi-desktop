@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import type { BrowserTabState } from '../../types/pi';
 import { anyOverlayCovers, isTransparentColor, type RectLike } from '../../lib/overlay-geometry';
+import { createAnnotation } from '../../lib/element-annotations';
+import { usePiStore } from '../../store/pi-store';
 import Icon from '../common/Icon';
+import Tooltip from '../common/Tooltip';
 import { t } from '../../i18n/zh';
 
 interface BrowserContentProps {
@@ -73,6 +76,10 @@ function isPanelCovered(viewport: DOMRect): boolean {
 export default function BrowserContent({ tab, browserId, obscured }: BrowserContentProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const [addressDraft, setAddressDraft] = useState<string | null>(null);
+  /** 正在页面内选择元素（等待用户点击） */
+  const [picking, setPicking] = useState(false);
+  const addElementAnnotation = usePiStore((state) => state.addElementAnnotation);
+  const showToast = usePiStore((state) => state.showToast);
   /** 原生视图被 App 浮层盖住时的静态底图（截图），避免面板变成一片空白 */
   const [frozenFrame, setFrozenFrame] = useState<string | null>(null);
   const frozenRef = useRef<string | null>(null);
@@ -162,6 +169,42 @@ export default function BrowserContent({ tab, browserId, obscured }: BrowserCont
     setAddressDraft(null);
   };
 
+  /**
+   * 标记元素：进入页面内选择模式 → 用户点一个元素 → 生成一条批注卡片（输入框上方）。
+   * 选择模式下页面自身被高亮框覆盖，Esc 或再点一次按钮可取消。
+   */
+  const pickElement = async () => {
+    if (!tab.url) return;
+    // 再点一次 = 取消（省得用户去页面上按 Esc）
+    if (picking) {
+      await window.pi.browser.cancelPickElement(browserId).catch(() => {});
+      return;
+    }
+    setPicking(true);
+    try {
+      const result = await window.pi.browser.pickElement(browserId);
+      const annotation = createAnnotation(result);
+      if (annotation) {
+        addElementAnnotation(annotation);
+        showToast(t.browserPicked, { variant: 'success' });
+      }
+    } catch (error) {
+      showToast(
+        `${t.browserPickFailed}：${error instanceof Error ? error.message : String(error)}`,
+        { variant: 'error' }
+      );
+    } finally {
+      setPicking(false);
+    }
+  };
+
+  // 切标签 / 卸载时把页面里的选择模式收掉，否则那段浮层会一直挂在新页面上
+  useEffect(() => {
+    return () => {
+      void window.pi.browser.cancelPickElement(browserId).catch(() => {});
+    };
+  }, [browserId]);
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-od-bg-dark">
       <div className="flex h-9 shrink-0 items-center gap-1 border-b border-od-border bg-od-bg-alt px-2">
@@ -217,6 +260,22 @@ export default function BrowserContent({ tab, browserId, obscured }: BrowserCont
         >
           <Icon name="external" className="w-3" />
         </button>
+        {picking && <span className="shrink-0 text-xs text-od-accent">{t.browserPicking}</span>}
+        <Tooltip label={t.browserPickElementHint}>
+          <button
+            type="button"
+            disabled={!tab.url}
+            onClick={() => void pickElement()}
+            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded disabled:opacity-30 ${
+              picking
+                ? 'bg-od-accent/20 text-od-accent'
+                : 'text-od-text-dim hover:bg-od-bg-hover hover:text-od-text-bright'
+            }`}
+            aria-label={t.browserPickElement}
+          >
+            <Icon name="crosshairs" className="w-3" />
+          </button>
+        </Tooltip>
       </div>
 
       <div ref={viewportRef} className="relative flex-1 min-h-0 overflow-hidden bg-od-bg">

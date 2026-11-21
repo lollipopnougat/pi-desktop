@@ -89,7 +89,13 @@ describe('项目隔离和旧数据', () => {
     const second = path.join(root, '乙', 'app');
     fs.mkdirSync(first, { recursive: true });
     fs.mkdirSync(second, { recursive: true });
-    fs.symlinkSync(first, path.join(root, 'alias'), 'dir');
+    // Windows 未开开发者模式时无法创建 'dir' 类型的符号链接（EPERM）；junction 不需要特权，
+    // 且同样是一个可被 realpathSync 解析的目录重解析点，用例语义不变。
+    fs.symlinkSync(
+      first,
+      path.join(root, 'alias'),
+      process.platform === 'win32' ? 'junction' : 'dir'
+    );
     expect(projectIdentity(first).id).not.toBe(projectIdentity(second).id);
     expect(projectIdentity(path.join(root, '甲')).id).not.toBe(
       projectIdentity(path.join(root, '乙')).id
@@ -469,7 +475,11 @@ describe('审核、并发与恢复', () => {
     fs.mkdirSync(process.env.PI_MEMORY_DIR!, { recursive: true });
     const outside = path.join(root, 'outside');
     fs.mkdirSync(outside);
-    fs.symlinkSync(outside, path.join(process.env.PI_MEMORY_DIR!, 'projects'), 'dir');
+    fs.symlinkSync(
+      outside,
+      path.join(process.env.PI_MEMORY_DIR!, 'projects'),
+      process.platform === 'win32' ? 'junction' : 'dir'
+    );
     expect(() => writeMemoryFile('project', '- 不能写', { projectName: 'p' })).toThrow('符号链接');
     expect(fs.readdirSync(outside)).toEqual([]);
   });

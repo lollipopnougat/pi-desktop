@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePiStore } from '../../store/pi-store';
 import Icon from '../common/Icon';
 import Dropdown from '../common/Dropdown';
+import Kbd from '../common/Kbd';
 import { t } from '../../i18n/zh';
 import {
   DEFAULT_SHORTCUTS,
@@ -256,8 +257,8 @@ export default function ShortcutsTab() {
           aria-label={t.shortcutsSearch}
           className="min-w-0 flex-1 bg-transparent text-xs text-od-text-bright placeholder:text-od-text-dim focus:border-transparent focus:shadow-none focus:outline-none"
         />
-        {/* 与 SessionSearchModal 的按键胶囊、列表里的绑定胶囊同尺寸（text-xs）：
-            ⌘(U+2318) 是细笔画符号字形，字号再小一档就只剩一笔模糊的圈，看着像“缩小了” */}
+        {/* 与 SessionSearchModal 的按键胶囊、列表里的绑定胶囊共用 Kbd（text-sm、font-kbd）：
+            ⌘(U+2318) 是细笔画符号字形，小字号只剩一笔模糊的圈，看着像“缩小了” */}
         {query ? (
           <button
             type="button"
@@ -269,9 +270,7 @@ export default function ShortcutsTab() {
             <Icon name="close" className="w-3" />
           </button>
         ) : (
-          <kbd className="shrink-0 rounded-md border border-od-border-light px-1.5 py-0.5 text-xs text-od-text-dim">
-            {formatBinding('Mod+F', isMac)}
-          </kbd>
+          <Kbd>{formatBinding('Mod+F', isMac)}</Kbd>
         )}
       </div>
 
@@ -349,7 +348,7 @@ export default function ShortcutsTab() {
                         title={recording ? t.shortcutsEscHint : t.shortcutsEdit}
                         aria-label={`${text.label} ${t.shortcutsEdit}`}
                         aria-pressed={recording}
-                        className={`min-w-[4.5rem] rounded-full px-3 py-1 text-center text-xs font-medium transition-colors ${
+                        className={`min-w-[5.5rem] rounded-full px-3.5 py-1.5 text-center font-kbd text-sm font-medium tabular-nums tracking-wide transition-colors ${
                           recording
                             ? 'bg-od-accent/15 text-od-accent ring-1 ring-od-accent ring-inset'
                             : binding

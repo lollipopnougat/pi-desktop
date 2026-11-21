@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { homedir } from 'os';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import {
   expandUserPath,
   installedGitAiPath,
@@ -128,13 +128,16 @@ describe('resolveAbsolutePath', () => {
     expect(resolveAbsolutePath('C:\\proj', '~\\notes.md', 'win32')).toBe(
       join(homedir(), 'notes.md')
     );
+    // 预期值用 resolve 而不是 join：production 用宿主的 node:path 解析相对路径（platform 参数
+    // 只影响 ~ 展开），Windows 宿主下 resolve('/proj', …) 会带上盘符，join 不会。
     expect(resolveAbsolutePath('/proj', '~\\notes.md', 'darwin')).toBe(
-      join('/proj', '~\\notes.md')
+      resolve('/proj', '~\\notes.md')
     );
   });
 
   it('相对路径按 cwd 解析，绝对路径原样返回', () => {
-    expect(resolveAbsolutePath('/proj', 'src/a.ts', 'darwin')).toBe(join('/proj', 'src/a.ts'));
+    expect(resolveAbsolutePath('/proj', 'src/a.ts', 'darwin')).toBe(resolve('/proj', 'src/a.ts'));
+    // 注意：宿主 node:path 的 isAbsolute 在 win32 下也把前导 `/` 视为绝对，所以这里两边一致。
     expect(resolveAbsolutePath('/proj', '/etc/hosts', 'darwin')).toBe('/etc/hosts');
   });
 });

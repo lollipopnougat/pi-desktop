@@ -9,7 +9,7 @@ const HOME_DIR: string = window.pi?.homeDir || '';
 /**
  * Git 分支按钮（ChatHeader 路径右侧 / Footer 状态栏共用）：
  * - 有 git 且在 repo 中：分支图标 + 当前分支名，点击弹出分支列表可切换
- * - 有 git 非 repo：图标 + 「非 Git 仓库」（禁用态）
+ * - 有 git 非 repo：图标 + 「非 Git 仓库」（禁用态）+ 右侧「创建 git 仓库」按钮
  * - 无 git：图标 + 「未安装 Git」（禁用态）
  * - 用户家目录不探测（避免 dotfiles 的 .git 误报，直接按非 repo 处理）
  *
@@ -30,16 +30,19 @@ export default function GitBranchButton({
   const [open, setOpen] = useState(false);
   const [branches, setBranches] = useState<{ name: string; current: boolean }[]>([]);
   const [loadingList, setLoadingList] = useState(false);
+  const [initing, setIniting] = useState(false);
   const [switching, setSwitching] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   // 跨实例同步：状态栏与聊天区两处按钮共用本组件，任一处切换分支成功后
   // bump gitBranchVersion，所有实例在此重新探测当前分支
   const gitBranchVersion = usePiStore((s) => s.gitBranchVersion);
+  const showToast = usePiStore((s) => s.showToast);
+  // 家目录不探测（dotfiles 有 .git 会误报），也不提供「初始化仓库」入口
+  const isHomeDir = !!cwd && cwd.replace(/[/\\]$/, '') === HOME_DIR;
 
   const loadStatus = useCallback(async () => {
-    // 家目录不探测（dotfiles .git 误报），直接按非 repo 处理
-    if (cwd && cwd.replace(/[/\\]$/, '') === HOME_DIR) {
+    if (isHomeDir) {
       setStatus({ installed: true, isRepo: false, currentBranch: null });
       return;
     }
@@ -49,7 +52,7 @@ export default function GitBranchButton({
     } catch {
       setStatus({ installed: false, isRepo: false, currentBranch: null });
     }
-  }, [cwd]);
+  }, [cwd, isHomeDir]);
 
   useEffect(() => {
     loadStatus();
@@ -122,6 +125,34 @@ export default function GitBranchButton({
         : status.currentBranch || t.gitNoBranch;
 
   const disabled = !status || !status.installed || !status.isRepo;
+  // 只在「装了 git 但当前项目不是仓库」时露出新建按钮
+  const canInit = !!status && status.installed && !status.isRepo && !isHomeDir;
+
+  const initRepo = async () => {
+    if (initing || !canInit) return;
+    setIniting(true);
+    try {
+      const r = await window.pi.gitInit(cwd);
+      if (r.ok) {
+        showToast(t.gitInitSuccess, { variant: 'success' });
+        // 通知其他实例（状态栏/聊天区另一处按钮）重新探测，本实例的 effect 也会刷新
+        usePiStore.getState().bumpGitBranchVersion();
+        await loadStatus();
+        onBranchChanged?.();
+      } else {
+        showToast(
+          r.error === 'git-not-installed'
+            ? t.gitNotInstalled
+            : t.gitInitFailed(r.error || 'unknown error'),
+          { variant: 'error' }
+        );
+      }
+    } catch (e: any) {
+      showToast(t.gitInitFailed(String(e?.message || e)), { variant: 'error' });
+    } finally {
+      setIniting(false);
+    }
+  };
 
   return (
     <div ref={rootRef} className="relative flex items-center">
@@ -146,6 +177,20 @@ export default function GitBranchButton({
         <Icon name="branch" className="w-3" />
         <span className="max-w-[160px] truncate">{label}</span>
       </button>
+
+      {/* 非 Git 仓库：右侧一键初始化仓库（文字按钮，不用 + 图标） */}
+      {canInit && (
+        <button
+          onClick={initRepo}
+          disabled={initing}
+          className="ml-0.5 flex shrink-0 items-center gap-1 whitespace-nowrap rounded px-1.5 py-0.5 text-xs text-od-text-dim transition-colors hover:bg-od-bg-hover hover:text-od-text-bright active:bg-od-border disabled:cursor-default disabled:opacity-60"
+          title={t.gitInitHint}
+          aria-label={t.gitInitRepo}
+        >
+          {initing && <Icon name="spinner" spin className="w-3" />}
+          <span>{t.gitInitRepo}</span>
+        </button>
+      )}
 
       {/* 分支列表下拉 */}
       {open && (

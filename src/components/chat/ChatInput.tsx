@@ -8,6 +8,10 @@ import PermissionApprovalPanel from './PermissionApprovalPanel';
 import PlanReviewPanel from '../plan/PlanReviewPanel';
 import MentionDropdown from './MentionDropdown';
 import QueueChips from './QueueChips';
+import ElementAnnotationCards from './ElementAnnotationCards';
+import QuoteAnnotationCards from './QuoteAnnotationCards';
+import { annotationImages, withAnnotationPrompt } from '../../lib/element-annotations';
+import { withQuotePrompt } from '../../lib/quote-annotations';
 import Icon from '../common/Icon';
 import GitBranchButton from '../GitBranchButton';
 import GoalBar from '../goal/GoalBar';
@@ -101,6 +105,16 @@ export default function ChatInput() {
   // 本会话自己正在跑时不拦（那时输入框是用来引导/排队的，拦了反而妨碍）。
   const busyBlocked =
     warnSameProjectBusy && busyKey !== '' && !isStreaming && acknowledgedBusyKey !== busyKey;
+  // 只标注、不写字也能发送：批注本身就是要发给模型的内容
+  const hasAnnotations = usePiStore(
+    (s) => s.elementAnnotations.length > 0 || s.quoteAnnotations.length > 0
+  );
+  // 批注必须写完才能发：只标了个元素/引用却没说想干什么，模型只能猜
+  const blankAnnotationCount = usePiStore(
+    (s) =>
+      s.elementAnnotations.filter((item) => !item.comment.trim()).length +
+      s.quoteAnnotations.filter((item) => !item.comment.trim()).length
+  );
   const [modeOpen, setModeOpen] = useState(false);
   const [permOpen, setPermOpen] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -118,14 +132,18 @@ export default function ChatInput() {
   // 权限策略映射（与 mode 下拉同构）
   const permissionPolicy = usePiStore((s) => s.permissionPolicy);
   const setPermissionPolicy = usePiStore((s) => s.setPermissionPolicy);
-  const permIcon = (p: PermissionPolicy): 'hand' | 'shield' | 'unlock' | 'classifier' =>
+  const permIcon = (
+    p: PermissionPolicy
+  ): 'hand' | 'shield' | 'unlock' | 'classifier' | 'reviewer' =>
     p === 'ask-all'
       ? 'hand'
       : p === 'auto-safe'
         ? 'shield'
         : p === 'classifier-auto'
           ? 'classifier'
-          : 'unlock';
+          : p === 'reviewer-auto'
+            ? 'reviewer'
+            : 'unlock';
   const permLabel = (p: PermissionPolicy): string =>
     p === 'ask-all'
       ? t.permissionAskAll
@@ -133,7 +151,9 @@ export default function ChatInput() {
         ? t.permissionAutoSafe
         : p === 'classifier-auto'
           ? t.permissionClassifierAuto
-          : t.permissionAllowAll;
+          : p === 'reviewer-auto'
+            ? t.permissionReviewerAuto
+            : t.permissionAllowAll;
   const permDesc = (p: PermissionPolicy): string =>
     p === 'ask-all'
       ? t.permissionAskAllDesc
@@ -141,7 +161,9 @@ export default function ChatInput() {
         ? t.permissionAutoSafeDesc
         : p === 'classifier-auto'
           ? t.permissionClassifierAutoDesc
-          : t.permissionAllowAllDesc;
+          : p === 'reviewer-auto'
+            ? t.permissionReviewerAutoDesc
+            : t.permissionAllowAllDesc;
   const permColor = (p: PermissionPolicy): string =>
     p === 'ask-all'
       ? 'text-od-orange'
@@ -149,7 +171,10 @@ export default function ChatInput() {
         ? 'text-od-accent'
         : p === 'classifier-auto'
           ? 'text-od-purple'
-          : 'text-od-green';
+          : p === 'reviewer-auto'
+            ? 'text-od-cyan'
+            : // allow-all：全部放行等于没有防护，用危险色提示
+              'text-od-red';
 
   // 统一处理模式切换（setMode 内部已处理 plan 工具裁剪）
   const applyMode = (m: AgentMode) => {
@@ -424,23 +449,51 @@ export default function ChatInput() {
   // 模型回复期间的发送：附件跟文本一起入队（主进程按模型视觉能力决定是否降级为落盘路径）
   // alternate=true 表示用「另一种」投递方式（Alt+Enter）
   const dispatchWhileStreaming = (value: string, alternate = false) => {
-    const images = pendingImagePayload();
+    // 批注与输入框草稿同源：取执行时的最新值，不用闭包里的旧快照
+    const annotations = usePiStore.getState().elementAnnotations;
+    const quotes = usePiStore.getState().quoteAnnotations;
+    // 批注截图放最前：提示词里写的是「最前面的 N 张图」
+    const images = [...annotationImages(annotations), ...(pendingImagePayload() ?? [])];
     const restored = pendingImages;
     setPendingImages([]);
     const useSteer = alternate ? streamingSendMode !== 'steer' : streamingSendMode === 'steer';
     const send = useSteer ? window.pi.steer : window.pi.followUp;
-    void send(value, images ? { images } : undefined).catch((e: any) => {
-      // 失败时把附件还回输入区（文本已由调用方清空），并提示错误，不静默吞掉
-      if (restored.length > 0) setPendingImages((prev) => [...restored, ...prev]);
-      setSendError(e?.message || t.sendFailed);
-    });
+    const promptText = withAnnotationPrompt(withQuotePrompt(value, quotes), annotations);
+    void send(promptText, images.length > 0 ? { images } : undefined)
+      .then(() => {
+        // 发出去才清批注：失败时用户写的东西还在
+        if (annotations.length > 0) usePiStore.getState().clearElementAnnotations();
+        if (quotes.length > 0) usePiStore.getState().clearQuoteAnnotations();
+      })
+      .catch((e: any) => {
+        // 失败时把附件还回输入区（文本已由调用方清空），并提示错误，不静默吞掉
+        if (restored.length > 0) setPendingImages((prev) => [...restored, ...prev]);
+        setSendError(e?.message || t.sendFailed);
+      });
   };
   const sendWhileStreaming = (value: string) => dispatchWhileStreaming(value);
   const sendOtherWhileStreaming = (value: string) => dispatchWhileStreaming(value, true);
 
   const handleSend = useCallback(async () => {
     const raw = text.trim();
-    if (!raw || usePiStore.getState().isStreaming || !isSessionReady()) return;
+    const pendingAnnotationCount =
+      usePiStore.getState().elementAnnotations.length +
+      usePiStore.getState().quoteAnnotations.length;
+    // 只有批注没有正文也算有效发送（用户可能只是指着元素提一句）
+    if (
+      (!raw && pendingAnnotationCount === 0) ||
+      usePiStore.getState().isStreaming ||
+      !isSessionReady()
+    )
+      return;
+    // 批注没写说明就不发（与发送按钮的 disabled 对应，Enter 也走同一条路）
+    const blankAnnotations =
+      usePiStore.getState().elementAnnotations.filter((item) => !item.comment.trim()).length +
+      usePiStore.getState().quoteAnnotations.filter((item) => !item.comment.trim()).length;
+    if (blankAnnotations > 0) {
+      setSendError(t.annotationCommentRequired);
+      return;
+    }
     // 同项目其他会话在跑时的提醒蒙层未放行：不允许发送
     if (busyBlocked) return;
     // 自动补全插入的 $skill:<name> 归一化为 SDK 识别的 /skill:<name>，
@@ -462,6 +515,14 @@ export default function ChatInput() {
     }
 
     setText('');
+    // 批注：引用块 + 页面元素块先后拼在正文后面，元素截图作为图片附件（放最前，与编号对应）
+    const annotations = usePiStore.getState().elementAnnotations;
+    const quotes = usePiStore.getState().quoteAnnotations;
+    const promptText = withAnnotationPrompt(withQuotePrompt(trimmed, quotes), annotations);
+    const clearAnnotations = () => {
+      if (annotations.length > 0) usePiStore.getState().clearElementAnnotations();
+      if (quotes.length > 0) usePiStore.getState().clearQuoteAnnotations();
+    };
 
     // goal 模式：若当前无 active goal，发送内容即作为目标创建并启动自治循环
     // 但 / 开头的命令优先走 prompt(让 SDK 处理 /goal 等命令)
@@ -472,7 +533,12 @@ export default function ChatInput() {
       (!curGoal || curGoal.status === 'complete') &&
       !trimmed.startsWith('/')
     ) {
-      const created = await window.pi.goal.create(trimmed);
+      // goal.create 只收文本：带了截图就直接说清楚，别默默丢掉
+      if (annotationImages(annotations).length > 0) {
+        usePiStore.getState().showToast(t.annotationGoalNoImage, { variant: 'info' });
+      }
+      const created = await window.pi.goal.create(promptText);
+      clearAnnotations();
       if (created?.queued) {
         usePiStore.getState().showToast(t.promptQueued, { variant: 'info' });
       }
@@ -481,18 +547,21 @@ export default function ChatInput() {
 
     let result: { queued: boolean } | undefined;
     try {
-      // Send with images if any
-      if (pendingImages.length > 0) {
-        const images = pendingImages.map((img) => ({
+      // 批注截图在前，手动贴的图片在后
+      const images = [
+        ...annotationImages(annotations),
+        ...pendingImages.map((img) => ({
           type: 'image' as const,
           data: img.data,
           mimeType: img.mediaType
-        }));
-        setPendingImages([]);
-        result = await window.pi.prompt(trimmed, { images });
-      } else {
-        result = await window.pi.prompt(trimmed);
-      }
+        }))
+      ];
+      result =
+        images.length > 0
+          ? await window.pi.prompt(promptText, { images })
+          : await window.pi.prompt(promptText);
+      setPendingImages([]);
+      clearAnnotations();
       // 并发上限（同时 3 个会话）：主进程已把这一轮排队，给用户一个明确提示
       if (result?.queued) {
         usePiStore.getState().showToast(t.promptQueued, { variant: 'info' });
@@ -594,7 +663,9 @@ export default function ChatInput() {
       if (usePiStore.getState().isStreaming) {
         const raw = text.trim();
         const trimmed = raw.startsWith('$skill:') ? raw.replace(/^\$skill:/, '/skill:') : raw;
-        if (trimmed) {
+        if (hasAnnotations && blankAnnotationCount > 0) {
+          setSendError(t.annotationCommentRequired);
+        } else if (trimmed || hasAnnotations) {
           // /goal 命令在 streaming 时直接走 IPC(扩展命令不能 steer)
           if (trimmed.toLowerCase() === '/goal pause') {
             window.pi.goal.pause();
@@ -624,7 +695,9 @@ export default function ChatInput() {
       }
       const raw = text.trim();
       const trimmed = raw.startsWith('$skill:') ? raw.replace(/^\$skill:/, '/skill:') : raw;
-      if (trimmed) {
+      if (hasAnnotations && blankAnnotationCount > 0) {
+        setSendError(t.annotationCommentRequired);
+      } else if (trimmed || hasAnnotations) {
         sendOtherWhileStreaming(trimmed);
         setText('');
       }
@@ -682,6 +755,12 @@ export default function ChatInput() {
           <GitBranchButton cwd={cwd} />
         </div>
       )}
+
+      {/* 对话引用批注（选中回复里的文字 → 添加到对话） */}
+      <QuoteAnnotationCards />
+
+      {/* 页面元素批注（在浏览器里标记的元素，发送时并入提示词） */}
+      <ElementAnnotationCards />
 
       {/* Pending images */}
       {pendingImages.length > 0 && (
@@ -877,7 +956,13 @@ export default function ChatInput() {
                   />
                   <div className="absolute bottom-full left-0 mb-1 w-56 rounded-lg border border-od-border-light bg-od-bg-alt shadow-xl z-20 py-1">
                     {(
-                      ['ask-all', 'auto-safe', 'classifier-auto', 'allow-all'] as PermissionPolicy[]
+                      [
+                        'ask-all',
+                        'auto-safe',
+                        'classifier-auto',
+                        'reviewer-auto',
+                        'allow-all'
+                      ] as PermissionPolicy[]
                     ).map((p) => (
                       <button
                         key={p}
@@ -916,7 +1001,8 @@ export default function ChatInput() {
                 disabled={
                   isSessionLoading ||
                   sessionRevision === null ||
-                  !text.trim() ||
+                  (!text.trim() && !hasAnnotations) ||
+                  blankAnnotationCount > 0 ||
                   availableModels.length === 0
                 }
                 className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white transition-colors hover:opacity-80 active:opacity-70 disabled:opacity-30 ${
@@ -926,24 +1012,32 @@ export default function ChatInput() {
                       ? 'bg-od-orange'
                       : 'bg-od-accent'
                 }`}
-                title={availableModels.length === 0 ? t.noModelsConfigured : t.send}
+                title={
+                  blankAnnotationCount > 0
+                    ? t.annotationCommentRequired
+                    : availableModels.length === 0
+                      ? t.noModelsConfigured
+                      : t.send
+                }
               >
                 <Icon name="send" className="w-3" />
               </button>
-            ) : text.trim() ? (
+            ) : text.trim() || hasAnnotations ? (
               <button
                 onClick={() => {
                   if (!isSessionReady()) return;
+                  if (hasAnnotations && blankAnnotationCount > 0) {
+                    setSendError(t.annotationCommentRequired);
+                    return;
+                  }
                   const raw = text.trim();
                   const trimmed = raw.startsWith('$skill:')
                     ? raw.replace(/^\$skill:/, '/skill:')
                     : raw;
-                  if (trimmed) {
-                    sendWhileStreaming(trimmed);
-                    setText('');
-                  }
+                  sendWhileStreaming(trimmed);
+                  setText('');
                 }}
-                disabled={isSessionLoading || sessionRevision === null}
+                disabled={isSessionLoading || sessionRevision === null || blankAnnotationCount > 0}
                 className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white transition-colors hover:opacity-80 active:opacity-70 disabled:opacity-30 ${
                   mode === 'plan'
                     ? 'bg-od-purple'

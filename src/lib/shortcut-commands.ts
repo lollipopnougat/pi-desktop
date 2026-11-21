@@ -12,6 +12,7 @@ import { transitionSession } from '../hooks/loadSession';
 import { systemPrefersDark } from '../theme/applyTheme';
 import { CHAT_INPUT_DOM_ID } from './app-commands';
 import { sessionLabel } from './session-label';
+import { navigateSessionHistory } from './session-nav';
 import { t } from '../i18n/zh';
 import type { ShortcutActionId } from './shortcuts';
 
@@ -90,6 +91,12 @@ export async function runShortcutAction(id: ShortcutActionId): Promise<void> {
       break;
     case 'session.search':
       store.setSessionSearchOpen(true);
+      break;
+    case 'session.back':
+      await navigateSessionHistory(-1);
+      break;
+    case 'session.forward':
+      await navigateSessionHistory(1);
       break;
     case 'session.tree':
       store.setTreeViewOpen(!store.treeViewOpen);

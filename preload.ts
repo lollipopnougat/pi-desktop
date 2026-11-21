@@ -199,6 +199,7 @@ const piAPI = {
   // === Git ===
   gitStatus: (cwd?: string) => ipcRenderer.invoke('pi:gitStatus', cwd),
   gitBranches: (cwd?: string) => ipcRenderer.invoke('pi:gitBranches', cwd),
+  gitInit: (cwd?: string) => ipcRenderer.invoke('pi:gitInit', cwd),
   gitSwitchBranch: (branch: string, cwd?: string) =>
     ipcRenderer.invoke('pi:gitSwitchBranch', branch, cwd),
   // 跨平台 basename（renderer 无法直接用 node path）
@@ -243,6 +244,24 @@ const piAPI = {
       ipcRenderer.off('pi:permissionRequest', handler);
     };
   },
+  onPermissionReview: (cb: (notice: any, identity: SessionIdentity) => void) => {
+    const handler = (_e: unknown, notice: any, identity: SessionIdentity) => cb(notice, identity);
+    ipcRenderer.on('pi:permissionReview', handler);
+    return () => {
+      ipcRenderer.off('pi:permissionReview', handler);
+    };
+  },
+  getRecentPermissionReviews: () => ipcRenderer.invoke('pi:getRecentPermissionReviews'),
+  getReviewerApprovalConfig: () => ipcRenderer.invoke('pi:getReviewerApprovalConfig'),
+  setReviewerApprovalConfig: (config: {
+    providerId?: string;
+    modelId?: string;
+    timeoutMs?: number;
+    onFailure?: 'ask-user' | 'deny';
+    maxConsecutiveDenials?: number;
+    extraPolicy?: string;
+    readOnlyTools?: boolean;
+  }) => ipcRenderer.invoke('pi:setReviewerApprovalConfig', config),
 
   // === UI 设置（~/.pi-desktop/ui-config.json） ===
   getUiSettings: () => ipcRenderer.invoke('pi:getUiSettings'),
@@ -350,6 +369,9 @@ const piAPI = {
       ipcRenderer.invoke('pi:browser:setViewport', viewport),
     setVisible: (visible: boolean) => ipcRenderer.invoke('pi:browser:setVisible', visible),
     capture: () => ipcRenderer.invoke('pi:browser:capture'),
+    pickElement: (tabId?: string) => ipcRenderer.invoke('pi:browser:pickElement', tabId),
+    cancelPickElement: (tabId?: string) =>
+      ipcRenderer.invoke('pi:browser:cancelPickElement', tabId),
     clearData: () => ipcRenderer.invoke('pi:browser:clearData')
   },
   onBrowserStateChanged: (cb: (state: any) => void) => {

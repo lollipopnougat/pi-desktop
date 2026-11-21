@@ -31,6 +31,9 @@ export const SHORTCUT_ACTIONS = [
   // === 会话 ===
   { id: 'session.new', category: 'session', defaultBinding: 'Mod+N' },
   { id: 'session.search', category: 'session', defaultBinding: 'Mod+K' },
+  // 标题栏左上角的后退/前进（会话导航历史），与浏览器/编辑器习惯一致
+  { id: 'session.back', category: 'session', defaultBinding: 'Mod+[' },
+  { id: 'session.forward', category: 'session', defaultBinding: 'Mod+]' },
   { id: 'session.tree', category: 'session', defaultBinding: 'Mod+Shift+T' },
   { id: 'session.reload', category: 'session', defaultBinding: '' },
   { id: 'session.exportHtml', category: 'session', defaultBinding: '' },

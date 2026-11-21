@@ -29,6 +29,8 @@ import TodoProgressCapsule from './components/chat/TodoProgressCapsule';
 import PanelIcon from './components/common/PanelIcon';
 import TitleMenuBar from './components/common/TitleMenuBar';
 import Icon from './components/common/Icon';
+import Tooltip from './components/common/Tooltip';
+import SessionNavButtons from './components/session/SessionNavButtons';
 import { t } from './i18n/zh';
 import { sessionLabel } from './lib/session-label';
 
@@ -153,18 +155,24 @@ export default function App() {
         {/* 左侧分组本身不标 no-drag（继承外层 drag，含 macOS 红绿灯前的留白），
             交互元素各自标 no-drag */}
         <div className="flex items-center gap-2" style={{ paddingLeft: isMac ? '80px' : '16px' }}>
+          {/* 会话前进/后退（对齐 Codex：红绿灯之后、侧栏开关之前）。
+              长按/右键后退键可看到最近会话列表（见 SessionNavButtons） */}
+          {!(settingsOpen || treeViewOpen) && <SessionNavButtons />}
+
           {/* 会话面板开关（VSCode 风格侧栏图标）——全屏面板打开时隐藏 */}
           {!(settingsOpen || treeViewOpen) && (
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className={`titlebar-btn flex h-7 w-7 items-center justify-center rounded-md ${
-                sidebarOpen ? 'titlebar-btn-active' : ''
-              }`}
-              title={t.toggleSidebar}
-              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-            >
-              <PanelIcon name="sidebar" size={16} />
-            </button>
+            <Tooltip label={t.toggleSidebar} shortcutId="view.sidebar">
+              <button
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className={`titlebar-btn flex h-7 w-7 items-center justify-center rounded-md ${
+                  sidebarOpen ? 'titlebar-btn-active' : ''
+                }`}
+                aria-label={t.toggleSidebar}
+                style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+              >
+                <PanelIcon name="sidebar" size={16} />
+              </button>
+            </Tooltip>
           )}
 
           {/* 标题不可选中且穿透光标事件，点击它时由下方的 drag 区域接管窗口拖拽 */}
@@ -222,35 +230,44 @@ export default function App() {
           {!(settingsOpen || treeViewOpen) && (
             <>
               {/* 终端面板开关（VSCode 风格底部面板图标） */}
-              <button
-                onClick={() => setTerminalPanelOpen(!terminalPanelOpen)}
-                className={`titlebar-btn flex h-7 w-7 items-center justify-center rounded-md ${
-                  terminalPanelOpen ? 'titlebar-btn-active' : ''
-                }`}
-                title={t.toggleTerminal}
-              >
-                <PanelIcon name="panel" size={16} />
-              </button>
+              <Tooltip label={t.toggleTerminal} shortcutId="view.terminal">
+                <button
+                  onClick={() => setTerminalPanelOpen(!terminalPanelOpen)}
+                  className={`titlebar-btn flex h-7 w-7 items-center justify-center rounded-md ${
+                    terminalPanelOpen ? 'titlebar-btn-active' : ''
+                  }`}
+                  aria-label={t.toggleTerminal}
+                >
+                  <PanelIcon name="panel" size={16} />
+                </button>
+              </Tooltip>
               {/* 右侧工作区开关（代码 / Diff / 浏览器） */}
-              <button
-                onClick={() => setRightPanelOpen(!rightPanelOpen)}
-                className={`titlebar-btn flex h-7 w-7 items-center justify-center rounded-md ${
-                  rightPanelOpen ? 'titlebar-btn-active' : ''
-                }`}
-                title={rightPanelOpen ? t.hideWorkspace : t.showWorkspace}
+              <Tooltip
+                label={rightPanelOpen ? t.hideWorkspace : t.showWorkspace}
+                shortcutId="view.workspace"
               >
-                <PanelIcon name="auxiliary" size={16} />
-              </button>
+                <button
+                  onClick={() => setRightPanelOpen(!rightPanelOpen)}
+                  className={`titlebar-btn flex h-7 w-7 items-center justify-center rounded-md ${
+                    rightPanelOpen ? 'titlebar-btn-active' : ''
+                  }`}
+                  aria-label={rightPanelOpen ? t.hideWorkspace : t.showWorkspace}
+                >
+                  <PanelIcon name="auxiliary" size={16} />
+                </button>
+              </Tooltip>
               {/* TODO 面板开关 */}
-              <button
-                onClick={() => setTodoPanelOpen(!todoPanelOpen)}
-                className={`titlebar-btn flex h-7 w-7 items-center justify-center rounded-md ${
-                  todoPanelOpen ? 'titlebar-btn-active' : ''
-                }`}
-                title={t.toggleTodo}
-              >
-                <Icon name="todo" className="w-3" />
-              </button>
+              <Tooltip label={t.toggleTodo} shortcutId="view.todo">
+                <button
+                  onClick={() => setTodoPanelOpen(!todoPanelOpen)}
+                  className={`titlebar-btn flex h-7 w-7 items-center justify-center rounded-md ${
+                    todoPanelOpen ? 'titlebar-btn-active' : ''
+                  }`}
+                  aria-label={t.toggleTodo}
+                >
+                  <Icon name="todo" className="w-3" />
+                </button>
+              </Tooltip>
             </>
           )}
         </div>
