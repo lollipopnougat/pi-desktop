@@ -1,0 +1,30 @@
+electron/ipc/misc-ipc.ts
+  h_cc604c9bda8355 249-250
+electron/pi-bridge.ts
+  h_cc604c9bda8355 1177-1178,1188-1190
+electron/session-slot.ts
+  h_cc604c9bda8355 99-104
+package.json
+  h_cc604c9bda8355 3
+src/components/chat/ChatInput.tsx
+  h_cc604c9bda8355 548-554,560,575-578
+src/components/chat/messages/AssistantMessage.tsx
+  h_cc604c9bda8355 128-133
+src/store/pi-store.ts
+  h_cc604c9bda8355 1117-1118
+src/types/pi.d.ts
+  h_cc604c9bda8355 625-630
+tests/session/pi-bridge.test.ts
+  h_cc604c9bda8355 609-636
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1e4098ef40733c8c4a33d011ec8a42e3d3ac58ff",
+  "prompts": {},
+  "humans": {
+    "h_cc604c9bda8355": {
+      "author": "lollipopnougat <ab2defg145@gmail.com>"
+    }
+  }
+}
