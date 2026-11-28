@@ -545,12 +545,19 @@ export default function ChatInput() {
       return;
     }
 
+    // 附件与批注在**发出去的那一刻**就从输入区消失：`window.pi.prompt` 的 resolve 在整轮
+    // 结束后（SDK `_startRun` 里 await agent.prompt(...) + continue 循环），放在 await 之后
+    // 清理会让缩略图一直挂到模型回复完，还会顺手清掉回复期间新贴的图片。
+    // 失败时把附件/批注原样还回去（与 dispatchWhileStreaming 同一套语义）。
+    const sentImages = pendingImages;
+    setPendingImages([]);
+    clearAnnotations();
     let result: { queued: boolean } | undefined;
     try {
       // 批注截图在前，手动贴的图片在后
       const images = [
         ...annotationImages(annotations),
-        ...pendingImages.map((img) => ({
+        ...sentImages.map((img) => ({
           type: 'image' as const,
           data: img.data,
           mimeType: img.mediaType
@@ -560,13 +567,15 @@ export default function ChatInput() {
         images.length > 0
           ? await window.pi.prompt(promptText, { images })
           : await window.pi.prompt(promptText);
-      setPendingImages([]);
-      clearAnnotations();
       // 并发上限（同时 3 个会话）：主进程已把这一轮排队，给用户一个明确提示
       if (result?.queued) {
         usePiStore.getState().showToast(t.promptQueued, { variant: 'info' });
       }
     } catch (e: any) {
+      // 发送失败：把附件与批注还回输入区（期间新加的内容排在它们前面）
+      if (sentImages.length > 0) setPendingImages((prev) => [...sentImages, ...prev]);
+      annotations.forEach((item) => usePiStore.getState().addElementAnnotation(item));
+      quotes.forEach((item) => usePiStore.getState().addQuoteAnnotation(item));
       setSendError(e?.message || t.sendFailed);
     }
   }, [text, pendingImages, availableModels, busyBlocked]);

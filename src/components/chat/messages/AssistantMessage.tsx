@@ -125,7 +125,12 @@ function AssistantMessage({
           <span className="flex items-center gap-1.5 text-od-text">
             <Icon name="robot" className="w-3" />
             {t.assistantStreaming}
-            <span className="font-mono tabular-nums text-od-text-dim">{t.elapsed(elapsedSec)}</span>
+            {/* 没有起点就不报「 0s」：切到后台在跑的会话由 pi:getState 的 replyStartedAt 补上 */}
+            {replyStartedAt != null && (
+              <span className="font-mono tabular-nums text-od-text-dim">
+                {t.elapsed(elapsedSec)}
+              </span>
+            )}
           </span>
           {/* 右：输出速率；行始终占位、min-w 防位数变化抖动；<0.1 token/s 视为 0 灰显 */}
           <span

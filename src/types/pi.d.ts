@@ -622,6 +622,12 @@ interface SessionState extends SessionIdentity {
   model: Model | undefined;
   thinkingLevel: string;
   isStreaming: boolean;
+  /**
+   * 本轮回复的开始时间（主进程在 agent_start 打点，agent_settled 清空）。
+   * 切到「后台正在跑的会话」时渲染端靠它接上「回答中… Ns」计时：
+   * 那个 agent_start 早于切焦点、事件被焦点门闩丢掉了，渲染端自己算不出起点。
+   */
+  replyStartedAt: number | null;
   messages: AgentMessage[];
   sessionId: string;
   sessionFile: string | undefined;

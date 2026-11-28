@@ -246,6 +246,8 @@ export function registerMiscIpc(ctx: MiscContext) {
         model: s.model,
         thinkingLevel: s.thinkingLevel,
         isStreaming: s.isStreaming,
+        // 本轮回复起点：切到「后台正在跑的会话」时渲染端靠它接上耗时计（否则永远 0s）
+        replyStartedAt: slot.runStartedAt,
         messages: [],
         sessionId: s.sessionId,
         sessionRevision: slot.identity().sessionRevision,

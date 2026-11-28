@@ -1174,6 +1174,8 @@ export class PiBridge {
     slot.unsubscribe = null;
     // 换会话时丢弃旧会话未推送的增量（新会话订阅建立后它们已无意义）
     slot.dropPendingUpdate();
+    // 新会话对象 = 上一轮的计时作废（fork/reload 后没有还在跑的那一轮）
+    slot.runStartedAt = null;
     const session = slot.session;
     if (!session) return;
     const identity = slot.identity();
@@ -1183,6 +1185,9 @@ export class PiBridge {
       if (slot.session !== session || slot.access.changing) return;
       // 槽活动跟踪（侧栏徽标）：后台槽跑完一轮就标未读，切过去自动清
       slot.lastActivityAt = Date.now();
+      // 本轮计时起点：切到「后台正在跑的会话」时渲染端靠它接上「助手 回答中… Ns」
+      if (event.type === 'agent_start') slot.runStartedAt = Date.now();
+      else if (event.type === 'agent_settled') slot.runStartedAt = null;
       if (event.type === 'agent_end' && this.focusedKey !== slot.key) slot.unread = true;
       this.scheduleSessionSlotsEmit();
       if (event.type === 'agent_end') this.drainPendingPrompts();

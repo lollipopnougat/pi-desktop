@@ -1114,7 +1114,8 @@ export const usePiStore = create<PiState>((set, get) => ({
       retryInfo: null,
       queue: { steering: [], followUp: [] },
       streamRate: 0,
-      replyStartedAt: null,
+      // 后台在跑的会话切回来时要接上「回答中… Ns」计时，起点由主进程给（见 SessionSlot.runStartedAt）
+      replyStartedAt: info.replyStartedAt ?? null,
       toolExecutions: {},
       stats: null,
       commands: [],

@@ -96,6 +96,12 @@ export class SessionSlot {
   readonly createdAt = Date.now();
   /** 最近活动时间（本槽 SDK 事件到达时刷新） */
   lastActivityAt = Date.now();
+  /**
+   * 本轮回复的开始时间（agent_start 打点，agent_settled 清空）。
+   * 渲染端切到「后台正在跑的会话」时靠它接上「助手 回答中… Ns」计时：
+   * 那个 agent_start 早于切焦点、被焦点门闩丢掉了，渲染端自己算不出起点。
+   */
+  runStartedAt: number | null = null;
   /** 后台期间跑完了一轮/有挂起交互 → 未读；切到焦点时清掉 */
   unread = false;
   /**

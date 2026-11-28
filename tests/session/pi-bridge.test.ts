@@ -606,6 +606,34 @@ describe('session IPC integration', () => {
     expect(mocks.setCwd).toHaveBeenCalledWith('/project/B');
   });
 
+  it('keeps the running turn start time on the slot so the elapsed timer survives switching sessions', async () => {
+    const { bridge, old, invoke } = await setup();
+    let emit!: (event: any) => void;
+    old.session.subscribe.mockImplementation((callback?: any) => {
+      emit = callback;
+      return old.unsubscribe;
+    });
+    await bridge.syncSession();
+    expect(bridge.sessionFor().runStartedAt).toBeNull();
+
+    const before = Date.now();
+    emit({ type: 'agent_start' });
+    const startedAt = bridge.sessionFor().runStartedAt;
+    expect(startedAt).toBeGreaterThanOrEqual(before);
+    // 渲染端切会话时经 pi:getState 拿起点：之前这里恒为 null，切到后台在跑的会话
+    // 就只会显示「助手 回答中… 0s」且秒数不动（agent_start 早于切焦点被丢掉了）。
+    expect((await invoke('pi:getState')).replyStartedAt).toBe(startedAt);
+
+    // A 被挤到后台：起点留在槽上，切回来还能接着算
+    old.session.isStreaming = true;
+    await invoke('pi:newSession', '/project/B');
+    expect(bridge.sessionFor('A').runStartedAt).toBe(startedAt);
+
+    // 本轮结束（agent_settled）后清空
+    emit({ type: 'agent_settled' });
+    expect(bridge.sessionFor('A').runStartedAt).toBeNull();
+  });
+
   it('reports the focused session pending ask and approval for the renderer pull path', async () => {
     const { bridge } = await makeBridge();
     expect(bridge.pendingInteractions()).toEqual({ ask: null, permission: null });
