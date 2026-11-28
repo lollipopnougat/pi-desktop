@@ -1,0 +1,22 @@
+AGENTS.md
+  h_cc604c9bda8355 179-202,312-313
+scripts/photon-wasm.ts
+  h_cc604c9bda8355 1-98
+tests/packaging/photon-wasm.test.ts
+  h_cc604c9bda8355 1-131
+tsconfig.node.json
+  h_cc604c9bda8355 16
+vite.config.ts
+  h_cc604c9bda8355 6,18-20,65-66
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8a7a444a28fcc22933c7cd234a28a76533f5a7af",
+  "prompts": {},
+  "humans": {
+    "h_cc604c9bda8355": {
+      "author": "lollipopnougat <ab2defg145@gmail.com>"
+    }
+  }
+}
