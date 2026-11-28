@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import electron from 'vite-plugin-electron';
 import renderer from 'vite-plugin-electron-renderer';
 import path from 'path';
+import { photonWasmPlugin } from './scripts/photon-wasm';
 
 export default defineConfig({
   plugins: [
@@ -14,6 +15,9 @@ export default defineConfig({
           startup();
         },
         vite: {
+          // SDK 的 Photon 图片缩放按 __dirname 读 photon_rs_bg.wasm，Vite 不会 emit 它，
+          // 缺文件时上传的图片全被替换成 "[Image omitted: ...]"（见 scripts/photon-wasm.ts）
+          plugins: [photonWasmPlugin(__dirname)],
           resolve: {
             alias: {
               // SDK 的 exports 地图只开放 `.`/`./rpc-entry`/`./client`/`./experimental/plugin`，
@@ -58,6 +62,8 @@ export default defineConfig({
           reload();
         },
         vite: {
+          // 预加载构建可能清空 dist-electron，这里再补一次，保证 wasm 在最终产物里
+          plugins: [photonWasmPlugin(__dirname)],
           build: {
             outDir: 'dist-electron',
             sourcemap: false

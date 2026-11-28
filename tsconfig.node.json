@@ -13,5 +13,5 @@
     "outDir": "node_modules/.tmp/tsnode",
     "tsBuildInfoFile": "node_modules/.tmp/tsnode/tsconfig.node.tsbuildinfo"
   },
-  "include": ["vite.config.ts"]
+  "include": ["vite.config.ts", "scripts/photon-wasm.ts"]
 }
